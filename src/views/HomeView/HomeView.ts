@@ -1,6 +1,6 @@
 import { ref, onMounted, onUnmounted, computed, watch } from "vue";
 import { getAuth, signOut, onAuthStateChanged } from "firebase/auth";
-import { useHairLink } from "@/composables/useHairLink";
+import { useHairLink } from "@/composables/useNextNs";
 
 const THEMES: Record<string, any> = {
   teal: {

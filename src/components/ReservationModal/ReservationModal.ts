@@ -1,5 +1,5 @@
 import { ref, computed, watch } from "vue";
-import { useHairLink, type TimeSlot } from "@/composables/useHairLink";
+import { useHairLink, type TimeSlot } from "@/composables/useNextNs";
 import type BaseModal from "@/uiParts/BaseModal/BaseModal.vue";
 import { getAuth } from "firebase/auth";
 
