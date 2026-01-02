@@ -128,1579 +128,6 @@ vite.config.ts
 <files>
 This section contains the contents of the repository's files.
 
-<file path="src/components/MyPage/MyPage.vue">
-<script setup lang="ts">
-import { onMounted, computed } from "vue";
-import { useNextNs } from "@/composables/useNextNs";
-import {
-  Chart as ChartJS,
-  RadialLinearScale,
-  PointElement,
-  LineElement,
-  Filler,
-  Tooltip,
-  Legend,
-} from "chart.js";
-import { Radar } from "vue-chartjs";
-
-ChartJS.register(
-  RadialLinearScale,
-  PointElement,
-  LineElement,
-  Filler,
-  Tooltip,
-  Legend
-);
-
-const {
-  fetchHistory,
-  studyLogs,
-  loading,
-  currentLevel,
-  levelProgress,
-  currentRank,
-  totalExp,
-} = useNextNs();
-
-onMounted(() => {
-  fetchHistory();
-});
-
-const chartData = computed(() => {
-  // データが空の場合のデフォルト表示
-  if (studyLogs.value.length === 0) {
-    return {
-      labels: ["必修", "一般", "状況設定", "解剖生理", "基礎看護", "精神"],
-      datasets: [
-        {
-          label: "正答率 (%)",
-          data: [0, 0, 0, 0, 0, 0],
-          backgroundColor: "rgba(59, 130, 246, 0.2)",
-          borderColor: "#3b82f6",
-        },
-      ],
-    };
-  }
-
-  const stats: Record<string, { total: number; correct: number }> = {};
-
-  studyLogs.value.forEach((log) => {
-    if (log.question && Array.isArray(log.question.tags)) {
-      log.question.tags.forEach((tag) => {
-        if (!stats[tag]) stats[tag] = { total: 0, correct: 0 };
-        stats[tag].total++;
-        if (log.isCorrect) stats[tag].correct++;
-      });
-    }
-  });
-
-  let topTags = Object.keys(stats)
-    .sort((a, b) => stats[b].total - stats[a].total)
-    .slice(0, 6);
-
-  // タグが少ない場合にデフォルトを補充
-  if (topTags.length < 3) {
-    const defaults = [
-      "必修",
-      "一般",
-      "状況設定",
-      "解剖生理",
-      "基礎看護",
-      "精神",
-    ];
-    defaults.forEach((t) => {
-      if (!topTags.includes(t)) topTags.push(t);
-    });
-    topTags = topTags.slice(0, 6);
-  }
-
-  const dataValues = topTags.map((tag) => {
-    const s = stats[tag];
-    if (!s) return 0;
-    return Math.round((s.correct / s.total) * 100);
-  });
-
-  return {
-    labels: topTags,
-    datasets: [
-      {
-        label: "正答率 (%)",
-        backgroundColor: "rgba(59, 130, 246, 0.2)",
-        borderColor: "#3b82f6",
-        pointBackgroundColor: "#3b82f6",
-        pointBorderColor: "#fff",
-        pointHoverBackgroundColor: "#fff",
-        pointHoverBorderColor: "#3b82f6",
-        data: dataValues,
-      },
-    ],
-  };
-});
-
-const chartOptions = {
-  responsive: true,
-  maintainAspectRatio: false,
-  scales: {
-    r: {
-      angleLines: { color: "rgba(0, 0, 0, 0.05)" },
-      grid: { color: "rgba(0, 0, 0, 0.05)" },
-      pointLabels: {
-        font: { size: 10, weight: "bold" as const },
-        color: "#64748b",
-      },
-      suggestedMin: 0,
-      suggestedMax: 100,
-      ticks: { stepSize: 20, display: false },
-    },
-  },
-  plugins: {
-    legend: { display: false },
-  },
-};
-
-const formatDate = (date: any) => {
-  if (!date) return "";
-  const d =
-    date instanceof Date ? date : date.toDate ? date.toDate() : new Date(date);
-  return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(
-    d.getMinutes()
-  ).padStart(2, "0")}`;
-};
-</script>
-
-<template>
-  <div class="pb-24 animate-fade-in">
-    <div
-      class="bg-gradient-to-br from-indigo-600 to-purple-700 rounded-3xl p-6 text-white shadow-lg shadow-indigo-200 mb-6 relative overflow-hidden"
-    >
-      <div class="relative z-10">
-        <div class="flex justify-between items-start mb-4">
-          <div>
-            <p class="text-[10px] font-bold opacity-70 mb-1">CURRENT RANK</p>
-            <h2 class="text-2xl font-black tracking-tight">
-              {{ currentRank }}
-            </h2>
-          </div>
-          <div
-            class="bg-white/20 backdrop-blur-sm px-3 py-1 rounded-full border border-white/10"
-          >
-            <span class="font-black text-sm">Lv.{{ currentLevel }}</span>
-          </div>
-        </div>
-
-        <div class="flex justify-between text-xs font-bold opacity-80 mb-2">
-          <span>EXP: {{ totalExp }}</span>
-          <span>Next: {{ 100 - levelProgress }}xp</span>
-        </div>
-
-        <div
-          class="w-full bg-black/20 h-3 rounded-full overflow-hidden backdrop-blur-sm border border-white/10"
-        >
-          <div
-            class="bg-yellow-400 h-full rounded-full transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(250,204,21,0.6)]"
-            :style="{ width: `${levelProgress}%` }"
-          ></div>
-        </div>
-      </div>
-
-      <div
-        class="absolute -right-8 -top-8 w-40 h-40 bg-white opacity-10 rounded-full blur-3xl"
-      ></div>
-      <div
-        class="absolute -left-8 -bottom-8 w-32 h-32 bg-purple-400 opacity-20 rounded-full blur-3xl"
-      ></div>
-    </div>
-
-    <div
-      class="bg-white p-4 rounded-3xl shadow-sm border border-slate-100 mb-8 relative"
-    >
-      <h3 class="absolute top-4 left-6 text-xs font-bold text-slate-400">
-        分野別傾向
-      </h3>
-      <div class="h-[250px] w-full mt-2">
-        <Radar v-if="chartData" :data="chartData" :options="chartOptions" />
-      </div>
-    </div>
-
-    <div>
-      <h3 class="font-bold text-slate-700 text-lg mb-4 px-1">学習履歴</h3>
-
-      <div v-if="loading" class="text-center py-10">
-        <div
-          class="animate-spin w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full mx-auto"
-        ></div>
-      </div>
-
-      <div
-        v-else-if="studyLogs.length === 0"
-        class="text-center py-10 text-slate-400"
-      >
-        <p class="text-3xl mb-2">📝</p>
-        <p class="text-xs font-bold">まだ履歴がありません</p>
-      </div>
-
-      <div v-else class="space-y-3">
-        <div
-          v-for="log in studyLogs"
-          :key="log.id"
-          class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-start gap-3 transition hover:border-blue-200"
-        >
-          <div
-            class="w-10 h-10 rounded-full flex items-center justify-center text-lg flex-shrink-0"
-            :class="
-              log.isCorrect
-                ? 'bg-blue-50 text-blue-500'
-                : 'bg-red-50 text-red-500'
-            "
-          >
-            {{ log.isCorrect ? "⭕️" : "❌" }}
-          </div>
-
-          <div class="flex-1 min-w-0">
-            <div class="flex justify-between items-start mb-1">
-              <span
-                class="text-[10px] font-bold text-slate-400 bg-slate-50 px-2 py-0.5 rounded"
-              >
-                {{ formatDate(log.createdAt) }}
-              </span>
-            </div>
-            <p
-              class="text-sm font-bold text-slate-700 line-clamp-2 leading-relaxed"
-            >
-              {{ log.question?.text || "問題文なし" }}
-            </p>
-            <div class="mt-2 flex gap-1 overflow-hidden">
-              <span
-                v-for="tag in log.question?.tags"
-                :key="tag"
-                class="text-[9px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded"
-                >#{{ tag }}</span
-              >
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-</template>
-
-<style scoped>
-.animate-fade-in {
-  animation: fadeIn 0.4s ease-out;
-}
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-</style>
-</file>
-
-<file path="src/components/QuizCard/QuizCard.vue">
-<script setup lang="ts">
-import { ref, watch, computed } from "vue";
-import type { Question } from "@/types";
-import { useNextNs } from "@/composables/useNextNs";
-
-const {
-  askAI,
-  aiResponse,
-  isAiThinking,
-  toggleBookmark,
-  bookmarkedIds,
-  clearedQuestionIds,
-} = useNextNs();
-
-const props = defineProps<{
-  question: Question;
-  index: number;
-}>();
-
-const emit = defineEmits<{
-  (
-    e: "answer",
-    isCorrect: boolean,
-    choiceIndex: number,
-    confidence: "ok" | "so-so" | "ng"
-  ): void;
-}>();
-
-const selectedIndex = ref<number | null>(null);
-const isAnswered = ref(false);
-const showAiComment = ref(false);
-
-// 克服済みかどうか
-const isCleared = computed(() =>
-  clearedQuestionIds.value.has(props.question.id)
-);
-
-watch(
-  () => props.question.id,
-  () => {
-    selectedIndex.value = null;
-    isAnswered.value = false;
-    showAiComment.value = false;
-  }
-);
-
-const handleChoice = (idx: number) => {
-  if (isAnswered.value) return;
-  selectedIndex.value = idx;
-  // ★自信度選択待ちのため、まだ確定しない
-};
-
-// 自信度ボタンが押されたら確定
-const submitWithConfidence = (confidence: "ok" | "so-so" | "ng") => {
-  if (selectedIndex.value === null) return;
-
-  isAnswered.value = true;
-  const isCorrect = props.question.correctIndices.includes(selectedIndex.value);
-  emit("answer", isCorrect, selectedIndex.value, confidence);
-};
-
-const handleAskAi = async () => {
-  showAiComment.value = true;
-  if (!aiResponse.value || !isAiThinking.value) {
-    await askAI(props.question);
-  }
-};
-</script>
-
-<template>
-  <div
-    class="bg-white rounded-3xl p-6 shadow-sm border mb-6 transition-all duration-300 relative overflow-hidden"
-    :class="
-      isCleared ? 'border-orange-300 bg-orange-50/50' : 'border-slate-100'
-    "
-  >
-    <div
-      v-if="isCleared"
-      class="absolute top-0 left-0 bg-orange-400 text-white text-[10px] font-bold px-3 py-1 rounded-br-xl z-20"
-    >
-      🎉 克服！
-    </div>
-
-    <button
-      @click.stop="toggleBookmark(question)"
-      class="absolute top-0 right-0 p-4 z-10 transition-transform active:scale-90 hover:scale-110"
-      :title="bookmarkedIds.has(question.id) ? '保存を解除' : '問題を保存'"
-    >
-      <span class="text-2xl filter drop-shadow-sm">
-        {{ bookmarkedIds.has(question.id) ? "🔖" : "📑" }}
-      </span>
-    </button>
-
-    <div class="flex justify-between items-center mb-4 pr-8 pt-2">
-      <span
-        class="text-[10px] font-bold bg-slate-100 text-slate-500 px-2 py-1 rounded-full"
-      >
-        {{ question.examYear }} {{ question.questionNumber }}
-      </span>
-      <div class="flex gap-1">
-        <span
-          v-for="tag in question.tags"
-          :key="tag"
-          class="text-[10px] text-blue-500 font-bold bg-blue-50 px-2 py-0.5 rounded-full"
-        >
-          #{{ tag }}
-        </span>
-      </div>
-    </div>
-
-    <h3 class="font-bold text-slate-800 text-lg mb-6 leading-relaxed">
-      <span class="text-blue-600 mr-2">Q{{ index + 1 }}.</span>
-      {{ question.text }}
-    </h3>
-
-    <div class="space-y-3">
-      <button
-        v-for="(choice, idx) in question.choices"
-        :key="idx"
-        @click="handleChoice(idx)"
-        class="w-full text-left p-4 rounded-xl border-2 transition-all duration-200 font-bold text-sm relative"
-        :class="{
-          'border-slate-100 hover:bg-slate-50 text-slate-600':
-            !isAnswered && selectedIndex !== idx,
-          'border-blue-500 bg-blue-50 text-blue-700':
-            selectedIndex === idx && !isAnswered,
-          'border-slate-300 bg-slate-100 text-slate-400':
-            isAnswered && selectedIndex !== idx,
-          'border-blue-400 bg-blue-50 text-blue-700':
-            isAnswered && question.correctIndices.includes(idx),
-          'border-red-400 bg-red-50 text-red-500 opacity-60':
-            isAnswered &&
-            selectedIndex === idx &&
-            !question.correctIndices.includes(idx),
-        }"
-        :disabled="isAnswered"
-      >
-        <span
-          class="absolute left-4 top-1/2 -translate-y-1/2 font-mono opacity-30"
-          >{{ idx + 1 }}</span
-        >
-        <span class="pl-6">{{ choice }}</span>
-
-        <span
-          v-if="isAnswered && question.correctIndices.includes(idx)"
-          class="absolute right-4 text-lg"
-          >🙆‍♂️</span
-        >
-        <span
-          v-if="
-            isAnswered &&
-            selectedIndex === idx &&
-            !question.correctIndices.includes(idx)
-          "
-          class="absolute right-4 text-lg"
-          >🙅‍♀️</span
-        >
-      </button>
-    </div>
-
-    <div
-      v-if="selectedIndex !== null && !isAnswered"
-      class="mt-6 pt-4 border-t border-dashed border-slate-200 animate-fade-in"
-    >
-      <p class="text-center text-xs font-bold text-slate-500 mb-3">
-        この回答の自信は？
-      </p>
-      <div class="flex gap-2 justify-center">
-        <button
-          @click="submitWithConfidence('ok')"
-          class="flex-1 py-3 rounded-xl bg-blue-50 text-blue-600 font-bold border border-blue-100 hover:bg-blue-100 transition shadow-sm"
-        >
-          ⭕️ 自信あり
-        </button>
-        <button
-          @click="submitWithConfidence('so-so')"
-          class="flex-1 py-3 rounded-xl bg-yellow-50 text-yellow-600 font-bold border border-yellow-100 hover:bg-yellow-100 transition shadow-sm"
-        >
-          🔺 あやふや
-        </button>
-        <button
-          @click="submitWithConfidence('ng')"
-          class="flex-1 py-3 rounded-xl bg-red-50 text-red-600 font-bold border border-red-100 hover:bg-red-100 transition shadow-sm"
-        >
-          ❌ 自信なし
-        </button>
-      </div>
-    </div>
-
-    <div
-      v-if="isAnswered"
-      class="mt-6 pt-6 border-t border-dashed border-slate-200 animate-fade-in"
-    >
-      <p class="text-xs font-bold text-slate-400 mb-2">解説</p>
-      <div
-        class="text-sm text-slate-700 leading-relaxed bg-slate-50 p-4 rounded-xl mb-4"
-      >
-        {{ question.explanation }}
-      </div>
-
-      <button
-        v-if="!showAiComment"
-        @click="handleAskAi"
-        class="w-full py-3 bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 flex items-center justify-center gap-2 hover:opacity-90 transition active:scale-95"
-      >
-        <span>🤖</span> AI先生に詳しく聞く
-      </button>
-
-      <div
-        v-else
-        class="bg-indigo-50 p-4 rounded-xl border border-indigo-100 animate-fade-in"
-      >
-        <div class="flex items-center gap-2 mb-2">
-          <span class="text-xl">🤖</span>
-          <span class="text-xs font-bold text-indigo-800">AI先生の解説</span>
-        </div>
-
-        <div v-if="isAiThinking" class="flex flex-col items-center py-4">
-          <div
-            class="animate-spin w-5 h-5 border-2 border-indigo-500 border-t-transparent rounded-full mb-2"
-          ></div>
-          <p class="text-[10px] text-indigo-400">解説を生成中...</p>
-        </div>
-
-        <div
-          v-else
-          class="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap"
-        >
-          {{ aiResponse }}
-        </div>
-      </div>
-    </div>
-  </div>
-</template>
-
-<style scoped>
-.animate-fade-in {
-  animation: fadeIn 0.3s ease-out;
-}
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(-5px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-</style>
-</file>
-
-<file path="src/components/JsonUploader.vue">
-<script setup lang="ts">
-import { ref, onMounted } from "vue";
-import { db } from "@/firebase";
-import { collection, doc, writeBatch, getDocs } from "firebase/firestore";
-
-const jsonInput = ref("");
-const status = ref("待機中");
-const isLoading = ref(false);
-const totalQuestions = ref<number | null>(null);
-
-// Firestoreから現在の問題数を取得
-const fetchTotalCount = async () => {
-  try {
-    const querySnapshot = await getDocs(collection(db, "questions"));
-    totalQuestions.value = querySnapshot.size;
-  } catch (e) {
-    console.error("カウント取得エラー:", e);
-  }
-};
-
-onMounted(() => {
-  fetchTotalCount();
-});
-
-const handleUpload = async () => {
-  if (!jsonInput.value) return;
-
-  let questions;
-  try {
-    questions = JSON.parse(jsonInput.value);
-    if (!Array.isArray(questions)) {
-      alert("エラー: データが配列形式（[...]）ではありません。");
-      return;
-    }
-  } catch (e) {
-    alert("エラー: JSONの形式が正しくありません。");
-    return;
-  }
-
-  if (
-    !confirm(
-      `📦 ${questions.length}問のデータを検出しました。\nFirestoreに登録しますか？`
-    )
-  )
-    return;
-
-  isLoading.value = true;
-  status.value = "登録準備中...";
-
-  const total = questions.length;
-  const CHUNK_SIZE = 400;
-  const chunks = [];
-  for (let i = 0; i < total; i += CHUNK_SIZE) {
-    chunks.push(questions.slice(i, i + CHUNK_SIZE));
-  }
-
-  try {
-    let count = 0;
-    for (const chunk of chunks) {
-      const batch = writeBatch(db);
-      const colRef = collection(db, "questions");
-
-      chunk.forEach((q: any) => {
-        const newDocRef = doc(colRef);
-        batch.set(newDocRef, {
-          ...q,
-          id: newDocRef.id,
-          createdAt: new Date(),
-        });
-      });
-
-      await batch.commit();
-      count += chunk.length;
-      status.value = `登録中... ${count} / ${total} 完了`;
-    }
-
-    status.value = "✅ 登録完了！";
-    alert("すべてのデータが登録されました！");
-    jsonInput.value = "";
-    fetchTotalCount(); // カウント更新
-  } catch (e) {
-    console.error(e);
-    status.value = "❌ エラー発生";
-    alert("登録中にエラーが発生しました。");
-  } finally {
-    isLoading.value = false;
-  }
-};
-</script>
-
-<template>
-  <div
-    class="p-5 border-2 border-dashed border-stone-300 my-5 rounded-lg bg-stone-50"
-  >
-    <div class="flex justify-between items-center mb-4">
-      <h3 class="m-0 font-bold text-stone-700">
-        ⚡️ コピペ一発登録くん (Vue版)
-      </h3>
-      <div
-        class="bg-white px-4 py-1 rounded-full border border-stone-200 font-bold text-blue-600 text-sm"
-      >
-        📊 現在の問題数:
-        {{ totalQuestions === null ? "..." : `${totalQuestions}問` }}
-      </div>
-    </div>
-
-    <p class="text-xs text-stone-500 mb-2">
-      ここにChatGPTが作ったJSONコード（ [ ... ] の中身すべて
-      ）を貼り付けてください。
-    </p>
-
-    <textarea
-      v-model="jsonInput"
-      placeholder='ここにJSONデータを貼り付け&#13;&#10;例: [{"text": "...", ...}]'
-      class="w-full h-40 p-3 font-mono text-xs border border-stone-300 rounded mb-3 focus:ring-2 focus:ring-blue-400 outline-none"
-    ></textarea>
-
-    <div class="flex items-center gap-3">
-      <button
-        @click="handleUpload"
-        :disabled="isLoading || !jsonInput"
-        class="px-5 py-2 bg-blue-600 text-white font-bold rounded hover:bg-blue-700 disabled:bg-stone-300 disabled:cursor-not-allowed transition"
-      >
-        {{ isLoading ? "処理中..." : "🔥 データを登録する" }}
-      </button>
-      <span
-        class="font-bold text-sm"
-        :class="status.includes('エラー') ? 'text-red-500' : 'text-stone-700'"
-      >
-        {{ status }}
-      </span>
-    </div>
-  </div>
-</template>
-</file>
-
-<file path="src/composables/useNextNs.ts">
-import { ref, computed } from "vue";
-import { db, auth } from "@/firebase";
-import {
-  doc,
-  getDoc,
-  setDoc,
-  collection,
-  query,
-  limit,
-  getDocs,
-  addDoc,
-  deleteDoc,
-  serverTimestamp,
-  where,
-} from "firebase/firestore";
-import { onAuthStateChanged, signOut } from "firebase/auth";
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import axios from "axios";
-import type { Question, User, StudyLog } from "@/types";
-
-// グローバルステート
-const currentUser = ref<User | null>(null);
-const questions = ref<Question[]>([]);
-const wrongQuestions = ref<Question[]>([]); // ★ここが未定義エラーの原因でした。修正済み。
-const reviewQuestions = ref<Question[]>([]); // 新しい復習リスト
-const bookmarkedQuestions = ref<Question[]>([]);
-const bookmarkedIds = ref<Set<string>>(new Set());
-const studyLogs = ref<StudyLog[]>([]);
-const loading = ref(false);
-
-// 克服した問題ID（画面上で消すのではなくバッジをつける用）
-const clearedQuestionIds = ref<Set<string>>(new Set());
-
-const todayLogCount = computed(() => {
-  const startOfDay = new Date();
-  startOfDay.setHours(0, 0, 0, 0);
-  return studyLogs.value.filter((log) => {
-    const logDate =
-      log.createdAt instanceof Date
-        ? log.createdAt
-        : (log.createdAt as any)?.toDate
-        ? (log.createdAt as any).toDate()
-        : new Date(log.createdAt);
-    return logDate >= startOfDay;
-  }).length;
-});
-
-const availableTags = computed(() => {
-  const tags = new Set<string>();
-  const source = [
-    ...questions.value,
-    ...reviewQuestions.value,
-    ...bookmarkedQuestions.value,
-  ];
-  source.forEach((q) => {
-    if (q.tags && Array.isArray(q.tags)) {
-      q.tags.forEach((t) => tags.add(t));
-    }
-  });
-  return Array.from(tags);
-});
-
-const totalExp = computed(() => {
-  return studyLogs.value.reduce((total, log) => {
-    return total + (log.isCorrect ? 20 : 5);
-  }, 0);
-});
-
-const currentLevel = computed(() => {
-  return Math.floor(totalExp.value / 100) + 1;
-});
-
-const levelProgress = computed(() => {
-  return totalExp.value % 100;
-});
-
-const currentRank = computed(() => {
-  const lv = currentLevel.value;
-  if (lv < 5) return "新人ナースの卵";
-  if (lv < 10) return "駆け出しナース";
-  if (lv < 20) return "中堅ナース";
-  if (lv < 50) return "ベテランナース";
-  return "看護師長クラス";
-});
-
-export function useNextNs() {
-  const aiResponse = ref("");
-  const isAiThinking = ref(false);
-
-  // --- ブックマーク機能 ---
-  const toggleBookmark = async (question: Question) => {
-    let userId = currentUser.value?.uid;
-    if (!userId) {
-      const user = auth.currentUser;
-      if (user) {
-        userId = user.uid;
-        currentUser.value = {
-          uid: user.uid,
-          email: user.email || "",
-          role: "student",
-          createdAt: new Date(),
-        };
-      } else {
-        alert("ログインしてください");
-        return;
-      }
-    }
-
-    if (bookmarkedIds.value.has(question.id)) {
-      // 削除
-      bookmarkedIds.value.delete(question.id);
-      bookmarkedQuestions.value = bookmarkedQuestions.value.filter(
-        (q) => q.id !== question.id
-      );
-      try {
-        const q = query(
-          collection(db, "bookmarks"),
-          where("userId", "==", userId),
-          where("questionId", "==", question.id)
-        );
-        const snap = await getDocs(q);
-        snap.forEach(async (d) => await deleteDoc(d.ref));
-      } catch (e) {
-        console.error("ブックマーク削除エラー:", e);
-      }
-    } else {
-      // 追加
-      bookmarkedIds.value.add(question.id);
-      bookmarkedQuestions.value.unshift(question);
-      try {
-        await addDoc(collection(db, "bookmarks"), {
-          userId: userId,
-          questionId: question.id,
-          question: question,
-          createdAt: serverTimestamp(),
-        });
-      } catch (e) {
-        console.error("ブックマーク保存エラー:", e);
-        bookmarkedIds.value.delete(question.id);
-        bookmarkedQuestions.value.shift();
-      }
-    }
-  };
-
-  const fetchBookmarks = async () => {
-    if (!currentUser.value) return;
-    try {
-      const q = query(
-        collection(db, "bookmarks"),
-        where("userId", "==", currentUser.value.uid)
-      );
-      const snap = await getDocs(q);
-      const items = snap.docs.map((d) => {
-        const data = d.data();
-        return {
-          ...data,
-          createdAt: data.createdAt?.toDate
-            ? data.createdAt.toDate()
-            : new Date(),
-        };
-      });
-      items.sort(
-        (a: any, b: any) => b.createdAt.getTime() - a.createdAt.getTime()
-      );
-
-      const list: Question[] = [];
-      const ids = new Set<string>();
-      items.forEach((data: any) => {
-        if (data.question) {
-          list.push(data.question as Question);
-          ids.add(data.questionId);
-        }
-      });
-      bookmarkedQuestions.value = list;
-      bookmarkedIds.value = ids;
-    } catch (e) {
-      console.error("ブックマーク取得エラー:", e);
-    }
-  };
-
-  // --- AI機能 ---
-  const askAI = async (question: Question, userQuery?: string) => {
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-    if (!apiKey) {
-      aiResponse.value =
-        "⚠️ APIキーが設定されていません。.envファイルを確認してください。";
-      return;
-    }
-    isAiThinking.value = true;
-    aiResponse.value = "";
-
-    try {
-      const listUrl = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`;
-      const listRes = await axios.get(listUrl);
-      const models = listRes.data?.models || [];
-      let targetModelName = "";
-      const generationModels = models.filter((m: any) =>
-        m.supportedGenerationMethods?.includes("generateContent")
-      );
-      const flash = generationModels.find((m: any) =>
-        m.name.includes("gemini-1.5-flash")
-      );
-      const pro15 = generationModels.find((m: any) =>
-        m.name.includes("gemini-1.5-pro")
-      );
-      const pro10 = generationModels.find((m: any) =>
-        m.name.includes("gemini-1.0-pro")
-      );
-      const anyGemini = generationModels.find((m: any) =>
-        m.name.includes("gemini")
-      );
-
-      if (flash) targetModelName = flash.name;
-      else if (pro15) targetModelName = pro15.name;
-      else if (pro10) targetModelName = pro10.name;
-      else if (anyGemini) targetModelName = anyGemini.name;
-      else if (generationModels.length > 0)
-        targetModelName = generationModels[0].name;
-      else throw new Error("利用可能なAIモデルが見つかりません");
-
-      const modelId = targetModelName.replace("models/", "");
-      console.log("Selected AI Model:", modelId);
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: modelId });
-
-      const correctNumbers = question.correctIndices
-        .map((i) => i + 1)
-        .join(", ");
-      const prompt = `
-        あなたは看護学生の学習をサポートする、親しみやすく優秀な専属チューターです。
-        学生はスマホアプリで学習しているため、**結論から、簡潔に、読みやすく**解説してください。
-        【指示】
-        1. 冒頭の挨拶は省略し、**「正解は ${correctNumbers} です」**と結論から始めてください。
-        2. **なぜその答えになるのか**、重要なキーワード（解剖生理や病態など）を使って、2〜3行で分かりやすく説明してください。
-        3. **他の選択肢がなぜ間違いなのか**を、箇条書きでシンプルに指摘してください。
-        4. 最後に、この問題を解くための「暗記のコツ」や「ポイント」を一言添えてください。
-        5. 語尾は「〜ですね」「〜ですよ」など、優しく指導するトーンにしてください。
-        【問題】${question.text}
-        【選択肢】${question.choices.map((c, i) => `${i + 1}. ${c}`).join("\n")}
-        【ユーザーの質問】${userQuery || "この問題の解説をお願いします。"}
-      `;
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      aiResponse.value = response.text();
-    } catch (e: any) {
-      console.error("AI Error:", e);
-      aiResponse.value =
-        "すみません、AIの呼び出しに失敗しました。\n" + e.message;
-    } finally {
-      isAiThinking.value = false;
-    }
-  };
-
-  const initAuth = () => {
-    onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        if (!currentUser.value) {
-          currentUser.value = {
-            uid: user.uid,
-            email: user.email || "",
-            role: "student",
-            createdAt: new Date(),
-          } as User;
-        }
-        await fetchUserProfile(user.uid);
-      } else {
-        currentUser.value = null;
-      }
-    });
-  };
-
-  const fetchUserProfile = async (uid: string) => {
-    try {
-      const userDocRef = doc(db, "users", uid);
-      const snap = await getDoc(userDocRef);
-
-      if (snap.exists()) {
-        currentUser.value = { uid, ...snap.data() } as User;
-      } else {
-        const newUser = {
-          uid,
-          email: auth.currentUser?.email || "",
-          role: "student",
-          createdAt: new Date(),
-        };
-        await setDoc(userDocRef, newUser, { merge: true });
-        currentUser.value = newUser as User;
-      }
-
-      await Promise.all([
-        fetchHistory(),
-        fetchReviewQuestions(),
-        fetchBookmarks(),
-      ]);
-    } catch (e) {
-      console.error("Profile fetch error:", e);
-    }
-  };
-
-  // --- 回答保存 (★自信度対応版) ---
-  const saveAnswer = async (
-    question: Question,
-    choiceIndex: number,
-    isCorrect: boolean,
-    confidence?: "ok" | "so-so" | "ng" // ★追加引数
-  ) => {
-    let userId = currentUser.value?.uid;
-    if (!userId) {
-      const user = auth.currentUser;
-      if (user) {
-        userId = user.uid;
-        currentUser.value = {
-          uid: user.uid,
-          email: user.email || "",
-          role: "student",
-          createdAt: new Date(),
-        };
-      } else {
-        console.error("User not logged in");
-        return;
-      }
-    }
-
-    // ローカル更新
-    const newLog: StudyLog = {
-      id: "temp_" + Date.now(),
-      userId: userId,
-      questionId: question.id,
-      question: question,
-      userChoice: [choiceIndex],
-      isCorrect: isCorrect,
-      timeTaken: 10,
-      createdAt: new Date(),
-      confidence: confidence, // ★保存
-    };
-    studyLogs.value.unshift(newLog);
-
-    // ★復習リストの更新ロジック
-    // 「不正解」または「自信なし・あやふや」ならリストに追加
-    if (!isCorrect || confidence === "so-so" || confidence === "ng") {
-      if (!reviewQuestions.value.some((q) => q.id === question.id)) {
-        reviewQuestions.value.unshift(question);
-      }
-      // 再度間違えたり自信がない場合は「克服マーク」を外す
-      if (clearedQuestionIds.value.has(question.id)) {
-        clearedQuestionIds.value.delete(question.id);
-      }
-    } else {
-      // 「正解」かつ「自信あり」ならリストから削除（克服）
-      // ★修正: リストから即座に消すのではなく、「克服マーク」をつける
-      if (reviewQuestions.value.some((q) => q.id === question.id)) {
-        clearedQuestionIds.value.add(question.id);
-      }
-    }
-
-    // Firestore保存
-    try {
-      await addDoc(collection(db, "study_logs"), {
-        userId: userId,
-        questionId: question.id,
-        question: question,
-        userChoice: [choiceIndex],
-        isCorrect: isCorrect,
-        timeTaken: 10,
-        confidence: confidence || null, // ★Firestoreへ保存
-        createdAt: serverTimestamp(),
-      });
-    } catch (e) {
-      console.error("保存エラー:", e);
-    }
-  };
-
-  const fetchHistory = async () => {
-    if (!currentUser.value) return;
-    try {
-      const q = query(
-        collection(db, "study_logs"),
-        where("userId", "==", currentUser.value.uid),
-        limit(100)
-      );
-      const snap = await getDocs(q);
-      const logs = snap.docs.map((d) => {
-        const data = d.data();
-        return {
-          id: d.id,
-          ...data,
-          createdAt: data.createdAt?.toDate
-            ? data.createdAt.toDate()
-            : new Date(),
-        } as StudyLog;
-      });
-      studyLogs.value = logs.sort(
-        (a, b) => b.createdAt.getTime() - a.createdAt.getTime()
-      );
-    } catch (e) {
-      console.error("履歴取得エラー:", e);
-    }
-  };
-
-  // --- 復習用問題（旧:間違えた問題）取得 ---
-  const fetchReviewQuestions = async () => {
-    if (!currentUser.value) return;
-    try {
-      clearedQuestionIds.value.clear();
-
-      const q = query(
-        collection(db, "study_logs"),
-        where("userId", "==", currentUser.value.uid),
-        limit(200)
-      );
-      const snap = await getDocs(q);
-      const logs = snap.docs.map((d) => d.data() as StudyLog);
-
-      const reviewMap = new Map<string, Question>();
-
-      // 日付順（古→新）にソートして再生
-      logs.sort((a, b) => {
-        const tA = a.createdAt?.toDate
-          ? a.createdAt.toDate().getTime()
-          : new Date(a.createdAt).getTime();
-        const tB = b.createdAt?.toDate
-          ? b.createdAt.toDate().getTime()
-          : new Date(b.createdAt).getTime();
-        return tA - tB;
-      });
-
-      logs.forEach((log) => {
-        if (log.question && log.question.id) {
-          // 条件: 不正解 OR 自信がない
-          if (
-            !log.isCorrect ||
-            log.confidence === "so-so" ||
-            log.confidence === "ng"
-          ) {
-            reviewMap.set(log.question.id, log.question);
-          } else if (log.isCorrect && log.confidence === "ok") {
-            // 条件: 正解 AND 自信あり → リストから削除（克服）
-            reviewMap.delete(log.question.id);
-          }
-        }
-      });
-
-      reviewQuestions.value = Array.from(reviewMap.values());
-    } catch (e) {
-      console.error("復習データ取得エラー:", e);
-    }
-  };
-
-  const logout = async () => {
-    await signOut(auth);
-    window.location.reload();
-  };
-
-  const fetchQuestions = async () => {
-    if (questions.value.length > 0) return;
-    loading.value = true;
-    try {
-      const q = query(collection(db, "questions"), limit(300));
-      const snap = await getDocs(q);
-      const list = snap.docs.map(
-        (d) => ({ id: d.id, ...d.data() } as Question)
-      );
-      for (let i = list.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [list[i], list[j]] = [list[j], list[i]];
-      }
-      questions.value = list;
-    } catch (e) {
-      console.error("問題取得エラー:", e);
-    } finally {
-      loading.value = false;
-    }
-  };
-
-  // ★ここで変数名を正しくエクスポート
-  return {
-    currentUser,
-    questions,
-    wrongQuestions,
-    reviewQuestions, // ★追加
-    clearedQuestionIds, // ★追加
-    bookmarkedQuestions,
-    bookmarkedIds,
-    studyLogs,
-    loading,
-    todayLogCount,
-    availableTags,
-    aiResponse,
-    isAiThinking,
-    totalExp,
-    currentLevel,
-    levelProgress,
-    currentRank,
-    askAI,
-    initAuth,
-    logout,
-    fetchQuestions,
-    fetchHistory,
-    fetchWrongQuestions: fetchReviewQuestions, // 互換性のため
-    fetchReviewQuestions, // ★追加
-    fetchBookmarks,
-    toggleBookmark,
-    saveAnswer,
-  };
-}
-</file>
-
-<file path=".firebase/hosting.ZGlzdA.cache">
-pwa-512x512.png,1764602053860,f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837
-pwa-192x192.png,1764602019543,f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837
-apple-touch-icon.png,1764602066631,f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837
-sw.js,1767184306787,a7d099f392e60c491d1fdc1cd8018948a42eec5c6f219b0d60a91d014166e732
-index.html,1767184306106,6fa9b5e53b028a1328380426ce08f3c56cc1f52bedfe84b38e81b06bbaf6a077
-manifest.webmanifest,1767184306106,8aaee58502cf4db11331e207a9546deab2c89de342448ee3bdd989c261cd8054
-registerSW.js,1767184306106,5b6445b5215737c53ef0d379c151d57de165a056de2d1c5812ed614f158ebcbd
-firebase-messaging-sw.js,1767184305910,8d8cf84c873b19b20b1328e697daeb3ef8d264cfe3e53683cd4da02a30ee90b1
-workbox-8c29f6e4.js,1767184306787,c1360d97831a7585ba8f5c2631c0b3b78258637b50e1329c8f7fc0837604e59a
-presentation.html,1767184305911,ae3b4772b21fdc1fc26348c7df9444275707a36e81107e5ccf9737ca72ec523d
-assets/index-gSa8UET0.css,1767184306106,74aeb027bc3875b7d3e7be30b8db1fd229e861c9720ec44afe6f713e0a5013d0
-logo.png,1767184305911,76b7ac7d85d148122ec0aa4fba107b400ce8574228525f15e7f4894b9cbd3047
-assets/index-jKupstoK.js,1767184306106,166b98de9473666220ba6bb02bcdb9a9b0253bee2a0c3ff67078c5cf56bc5d51
-</file>
-
-<file path="functions/lib/index.js">
-"use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.sendDailyReminders = exports.notifyOnReservationDeleted = exports.notifyOnReservationCreated = exports.lineWebhook = exports.sendAutoThanksLine = exports.searchProduct = exports.getAiRecommendation = exports.linkLineAccount = void 0;
-const https_1 = require("firebase-functions/v2/https");
-const firestore_1 = require("firebase-functions/v2/firestore");
-const scheduler_1 = require("firebase-functions/v2/scheduler");
-const v2_1 = require("firebase-functions/v2");
-const params_1 = require("firebase-functions/params");
-const admin = __importStar(require("firebase-admin"));
-const axios_1 = __importDefault(require("axios"));
-const line = __importStar(require("@line/bot-sdk"));
-if (admin.apps.length === 0) {
-    admin.initializeApp();
-}
-const db = admin.firestore();
-(0, v2_1.setGlobalOptions)({
-    region: "asia-northeast1",
-    memory: "1GiB",
-    maxInstances: 10,
-});
-const lineBotToken = (0, params_1.defineSecret)("LINE_BOT_TOKEN");
-const lineBotSecret = (0, params_1.defineSecret)("LINE_BOT_SECRET");
-const lineLoginChannelId = (0, params_1.defineSecret)("LINE_LOGIN_CHANNEL_ID");
-const lineLoginChannelSecret = (0, params_1.defineSecret)("LINE_LOGIN_CHANNEL_SECRET");
-const geminiApiKey = (0, params_1.defineSecret)("GEMINI_API_KEY");
-const yahooAppId = (0, params_1.defineSecret)("YAHOO_APP_ID");
-// --- Helper Functions ---
-const sendPushNotification = async (uid, title, body) => {
-    var _a;
-    try {
-        const userDoc = await db.collection("users").doc(uid).get();
-        const tokens = ((_a = userDoc.data()) === null || _a === void 0 ? void 0 : _a.fcmTokens) || [];
-        if (tokens.length > 0) {
-            const message = { notification: { title, body }, tokens: tokens };
-            await admin.messaging().sendEachForMulticast(message);
-        }
-    }
-    catch (e) {
-        console.error("FCM Error:", e);
-    }
-};
-const sendLineNotification = async (uid, message, token, secret) => {
-    var _a;
-    try {
-        const userDoc = await db.collection("users").doc(uid).get();
-        const lineUserId = (_a = userDoc.data()) === null || _a === void 0 ? void 0 : _a.lineUserId;
-        if (lineUserId) {
-            const client = new line.Client({
-                channelAccessToken: token,
-                channelSecret: secret,
-            });
-            await client.pushMessage(lineUserId, { type: "text", text: message });
-        }
-    }
-    catch (e) {
-        console.error("LINE Error:", e);
-    }
-};
-// --- Features ---
-// 1. LINE Login
-exports.linkLineAccount = (0, https_1.onCall)({
-    secrets: [
-        lineLoginChannelId,
-        lineLoginChannelSecret,
-        lineBotToken,
-        lineBotSecret,
-    ],
-}, async (request) => {
-    if (!request.auth)
-        throw new https_1.HttpsError("unauthenticated", "Login required");
-    const { code, redirectUri } = request.data;
-    try {
-        const params = new URLSearchParams();
-        params.append("grant_type", "authorization_code");
-        params.append("code", code);
-        params.append("redirect_uri", redirectUri);
-        params.append("client_id", lineLoginChannelId.value());
-        params.append("client_secret", lineLoginChannelSecret.value());
-        const tokenResponse = await axios_1.default.post("https://api.line.me/oauth2/v2.1/token", params);
-        const { access_token } = tokenResponse.data;
-        const profileResponse = await axios_1.default.get("https://api.line.me/v2/profile", { headers: { Authorization: `Bearer ${access_token}` } });
-        await db.collection("users").doc(request.auth.uid).set({
-            isLineLinked: true,
-            lineUserId: profileResponse.data.userId,
-            lineDisplayName: profileResponse.data.displayName,
-        }, { merge: true });
-        return { success: true };
-    }
-    catch (error) {
-        throw new https_1.HttpsError("internal", error.message);
-    }
-});
-// 2. AI (Magic Karte) - 自動モデル選択版
-exports.getAiRecommendation = (0, https_1.onCall)({ secrets: [geminiApiKey] }, async (request) => {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j;
-    if (!request.auth)
-        throw new https_1.HttpsError("unauthenticated", "Login required");
-    const apiKey = geminiApiKey.value();
-    const { roughNote } = request.data;
-    if (!apiKey)
-        return {
-            rawText: JSON.stringify({
-                technical: "APIキーエラー",
-                line: "設定を確認してください",
-            }),
-        };
-    const prompt = `
-      美容師のアシスタントAIです。
-      以下の【メモ】を元に、JSONデータのみを出力してください。
-      挨拶や余計な文章は一切不要です。
-
-      【メモ】
-      ${roughNote}
-
-      【出力形式】
-      {
-          "technical": "美容師向けの専門的なカルテ文章（施術内容、薬剤など）",
-          "line": "お客様へ送るサンクスLINEの文章（絵文字を使い、親しみやすく）"
-      }
-    `;
-    try {
-        // 1. まず利用可能なモデル一覧を取得する (ListModels)
-        const listUrl = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`;
-        const listRes = await axios_1.default.get(listUrl);
-        const models = ((_a = listRes.data) === null || _a === void 0 ? void 0 : _a.models) || [];
-        // 2. 生成可能なモデルの中から、最新のGeminiを探す
-        // 優先順位: 1.5-flash -> 1.5-pro -> 1.0-pro -> 何でもいいからgemini
-        let targetModelName = "";
-        const generationModels = models.filter((m) => { var _a; return (_a = m.supportedGenerationMethods) === null || _a === void 0 ? void 0 : _a.includes("generateContent"); });
-        // 優先モデルを探す
-        const flash = generationModels.find((m) => m.name.includes("gemini-1.5-flash"));
-        const pro15 = generationModels.find((m) => m.name.includes("gemini-1.5-pro"));
-        const pro10 = generationModels.find((m) => m.name.includes("gemini-1.0-pro"));
-        const anyGemini = generationModels.find((m) => m.name.includes("gemini"));
-        if (flash)
-            targetModelName = flash.name;
-        else if (pro15)
-            targetModelName = pro15.name;
-        else if (pro10)
-            targetModelName = pro10.name;
-        else if (anyGemini)
-            targetModelName = anyGemini.name;
-        else if (generationModels.length > 0)
-            targetModelName = generationModels[0].name;
-        else
-            throw new Error("利用可能なAIモデルが見つかりません");
-        // targetModelName は "models/gemini-1.5-flash-001" のような形式で返ってくる
-        // URL生成時に models/ が重複しないように調整
-        const modelId = targetModelName.replace("models/", "");
-        console.log("Selected AI Model:", modelId);
-        // 3. 確定したモデルで生成を実行
-        const generateUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${apiKey}`;
-        const response = await axios_1.default.post(generateUrl, {
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { responseMimeType: "application/json" },
-        }, { headers: { "Content-Type": "application/json" } });
-        const candidates = (_b = response.data) === null || _b === void 0 ? void 0 : _b.candidates;
-        if (!candidates || candidates.length === 0) {
-            throw new Error("No response from AI");
-        }
-        let text = candidates[0].content.parts[0].text;
-        // クリーニング
-        text = text
-            .replace(/```json/g, "")
-            .replace(/```/g, "")
-            .trim();
-        try {
-            JSON.parse(text);
-        }
-        catch (e) {
-            const firstBrace = text.indexOf("{");
-            const lastBrace = text.lastIndexOf("}");
-            if (firstBrace !== -1 && lastBrace !== -1) {
-                text = text.substring(firstBrace, lastBrace + 1);
-            }
-        }
-        return { rawText: text };
-    }
-    catch (e) {
-        console.error("AI Auto-Detect Error:", ((_c = e.response) === null || _c === void 0 ? void 0 : _c.data) || e.message);
-        let errorMsg = "AIエラー";
-        if (((_d = e.response) === null || _d === void 0 ? void 0 : _d.status) === 400 &&
-            ((_h = (_g = (_f = (_e = e.response) === null || _e === void 0 ? void 0 : _e.data) === null || _f === void 0 ? void 0 : _f.error) === null || _g === void 0 ? void 0 : _g.message) === null || _h === void 0 ? void 0 : _h.includes("API key not valid"))) {
-            errorMsg = "APIキーが無効です";
-        }
-        else if (((_j = e.response) === null || _j === void 0 ? void 0 : _j.status) === 429) {
-            errorMsg = "混雑中: 時間を置いて再試行してください";
-        }
-        else if (e.message) {
-            errorMsg = "エラー: " + e.message;
-        }
-        return {
-            rawText: JSON.stringify({
-                technical: errorMsg,
-                line: "（手動で入力してください）",
-            }),
-        };
-    }
-});
-// 3. 商品検索
-exports.searchProduct = (0, https_1.onCall)({ secrets: [yahooAppId] }, async (request) => {
-    var _a, _b;
-    if (!request.auth)
-        throw new https_1.HttpsError("unauthenticated", "Login required");
-    const { code } = request.data;
-    const appId = yahooAppId.value();
-    if (!code || !appId)
-        return { name: null };
-    try {
-        const res = await axios_1.default.get(`https://shopping.yahooapis.jp/ShoppingWebService/V3/itemSearch?appid=${appId}&jan_code=${code}&results=1`);
-        return { name: ((_b = (_a = res.data.hits) === null || _a === void 0 ? void 0 : _a[0]) === null || _b === void 0 ? void 0 : _b.name) || null };
-    }
-    catch (e) {
-        return { name: null };
-    }
-});
-// 4. サンクスLINE自動送信
-exports.sendAutoThanksLine = (0, firestore_1.onDocumentCreated)({ document: "logs/{logId}", secrets: [lineBotToken, lineBotSecret] }, async (event) => {
-    var _a, _b;
-    const snapshot = event.data;
-    if (!snapshot)
-        return;
-    const logData = snapshot.data();
-    const stylistId = logData.stylistId || logData.authorId;
-    const customerId = logData.customerId;
-    const customLineMessage = logData.customLineMessage;
-    if (!stylistId || !customerId) {
-        return;
-    }
-    try {
-        const settingsRef = db
-            .collection("users")
-            .doc(stylistId)
-            .collection("system")
-            .doc("auto_messages");
-        const settingsSnap = await settingsRef.get();
-        const settings = settingsSnap.exists
-            ? settingsSnap.data()
-            : { enabled: true };
-        if ((settings === null || settings === void 0 ? void 0 : settings.enabled) === false) {
-            return;
-        }
-        const customerRef = await db.collection("users").doc(customerId).get();
-        const lineUserId = (_a = customerRef.data()) === null || _a === void 0 ? void 0 : _a.lineUserId;
-        const customerName = ((_b = customerRef.data()) === null || _b === void 0 ? void 0 : _b.name) || "お客様";
-        if (!lineUserId) {
-            return;
-        }
-        const template = (settings === null || settings === void 0 ? void 0 : settings.template) ||
-            "{name}様\n\n本日はご来店ありがとうございました！";
-        const msg = customLineMessage || template.replace(/\{name\}/g, customerName);
-        const token = lineBotToken.value();
-        const secret = lineBotSecret.value();
-        if (!token)
-            return;
-        const client = new line.Client({
-            channelAccessToken: token,
-            channelSecret: secret,
-        });
-        await client.pushMessage(lineUserId, { type: "text", text: msg });
-    }
-    catch (e) {
-        console.error("[ThanksLine] Error", e);
-    }
-});
-// 5. LINE Webhook
-exports.lineWebhook = (0, https_1.onRequest)({ secrets: [lineBotToken, lineBotSecret] }, async (req, res) => {
-    res.json({ success: true });
-});
-// 6. 予約作成通知
-exports.notifyOnReservationCreated = (0, firestore_1.onDocumentCreated)({
-    document: "reservations/{reservationId}",
-    secrets: [lineBotToken, lineBotSecret],
-}, async (event) => {
-    const snapshot = event.data;
-    if (!snapshot)
-        return;
-    const data = snapshot.data();
-    const { stylistId, customerId, customerName, date, time, createdBy } = data;
-    const token = lineBotToken.value();
-    const secret = lineBotSecret.value();
-    const msg = `【予約完了】\n${customerName}様\n📅 ${date} ${time}`;
-    if (createdBy === customerId) {
-        await sendPushNotification(stylistId, "新着予約", msg);
-        await sendLineNotification(stylistId, msg, token, secret);
-    }
-    else if (createdBy === stylistId) {
-        await sendPushNotification(customerId, "予約のお知らせ", msg);
-        await sendLineNotification(customerId, msg, token, secret);
-    }
-    else {
-        await sendPushNotification(stylistId, "新着予約", msg);
-        await sendPushNotification(customerId, "予約のお知らせ", msg);
-    }
-    try {
-        const connectionsRef = db.collection("connections");
-        const querySnapshot = await connectionsRef
-            .where("stylistId", "==", stylistId)
-            .where("customerId", "==", customerId)
-            .get();
-        if (!querySnapshot.empty) {
-            const batch = db.batch();
-            querySnapshot.docs.forEach((doc) => {
-                batch.update(doc.ref, { nextReservation: date });
-            });
-            await batch.commit();
-        }
-    }
-    catch (e) {
-        console.error("Next reservation error", e);
-    }
-});
-// 7. 予約キャンセル通知
-exports.notifyOnReservationDeleted = (0, firestore_1.onDocumentDeleted)({
-    document: "reservations/{reservationId}",
-    secrets: [lineBotToken, lineBotSecret],
-}, async (event) => {
-    const snapshot = event.data;
-    if (!snapshot)
-        return;
-    const data = snapshot.data();
-    const { stylistId, customerId, customerName, date, time } = data;
-    const token = lineBotToken.value();
-    const secret = lineBotSecret.value();
-    const msg = `【予約キャンセル】\n${customerName}様\n📅 ${date} ${time}\n予約が取り消されました。`;
-    await sendPushNotification(stylistId, "予約キャンセル", msg);
-    await sendLineNotification(stylistId, msg, token, secret);
-    await sendPushNotification(customerId, "予約キャンセル", msg);
-    await sendLineNotification(customerId, msg, token, secret);
-});
-// 8. リマインダー通知
-exports.sendDailyReminders = (0, scheduler_1.onSchedule)("every day 09:00", async (event) => {
-    const today = new Date();
-    today.setDate(today.getDate() + 1);
-    const tomorrowStr = today.toISOString().split("T")[0];
-    const snapshot = await db
-        .collection("reservations")
-        .where("date", "==", tomorrowStr)
-        .get();
-    if (snapshot.empty)
-        return;
-    snapshot.forEach(async (doc) => {
-        const data = doc.data();
-        const msg = `【リマインダー】\n明日 ${data.time} よりご予約がございます。\nお待ちしております！`;
-        await sendPushNotification(data.customerId, "ご予約のリマインダー", msg);
-    });
-});
-</file>
-
 <file path="functions/.gitignore">
 node_modules/
 *.local
@@ -2068,439 +495,6 @@ exports.sendDailyReminders = (0, scheduler_1.onSchedule)("every day 09:00", asyn
         await sendPushNotification(data.customerId, "ご予約のリマインダー", msg);
     });
 });
-</file>
-
-<file path="functions/index.ts">
-import { onCall, onRequest, HttpsError } from "firebase-functions/v2/https";
-import {
-  onDocumentCreated,
-  onDocumentDeleted,
-} from "firebase-functions/v2/firestore";
-import { onSchedule } from "firebase-functions/v2/scheduler";
-import { setGlobalOptions } from "firebase-functions/v2";
-import { defineSecret } from "firebase-functions/params";
-import * as admin from "firebase-admin";
-import axios from "axios";
-import * as line from "@line/bot-sdk";
-
-if (admin.apps.length === 0) {
-  admin.initializeApp();
-}
-const db = admin.firestore();
-
-setGlobalOptions({
-  region: "asia-northeast1",
-  memory: "1GiB",
-  maxInstances: 10,
-});
-
-const lineBotToken = defineSecret("LINE_BOT_TOKEN");
-const lineBotSecret = defineSecret("LINE_BOT_SECRET");
-const lineLoginChannelId = defineSecret("LINE_LOGIN_CHANNEL_ID");
-const lineLoginChannelSecret = defineSecret("LINE_LOGIN_CHANNEL_SECRET");
-const geminiApiKey = defineSecret("GEMINI_API_KEY");
-const yahooAppId = defineSecret("YAHOO_APP_ID");
-
-// --- Helper Functions ---
-const sendPushNotification = async (
-  uid: string,
-  title: string,
-  body: string
-) => {
-  try {
-    const userDoc = await db.collection("users").doc(uid).get();
-    const tokens = userDoc.data()?.fcmTokens || [];
-    if (tokens.length > 0) {
-      const message = { notification: { title, body }, tokens: tokens };
-      await admin.messaging().sendEachForMulticast(message);
-    }
-  } catch (e) {
-    console.error("FCM Error:", e);
-  }
-};
-
-const sendLineNotification = async (
-  uid: string,
-  message: string,
-  token: string,
-  secret: string
-) => {
-  try {
-    const userDoc = await db.collection("users").doc(uid).get();
-    const lineUserId = userDoc.data()?.lineUserId;
-    if (lineUserId) {
-      const client = new line.Client({
-        channelAccessToken: token,
-        channelSecret: secret,
-      });
-      await client.pushMessage(lineUserId, { type: "text", text: message });
-    }
-  } catch (e) {
-    console.error("LINE Error:", e);
-  }
-};
-
-// --- Features ---
-
-// 1. LINE Login
-export const linkLineAccount = onCall(
-  {
-    secrets: [
-      lineLoginChannelId,
-      lineLoginChannelSecret,
-      lineBotToken,
-      lineBotSecret,
-    ],
-  },
-  async (request) => {
-    if (!request.auth)
-      throw new HttpsError("unauthenticated", "Login required");
-    const { code, redirectUri } = request.data;
-    try {
-      const params = new URLSearchParams();
-      params.append("grant_type", "authorization_code");
-      params.append("code", code);
-      params.append("redirect_uri", redirectUri);
-      params.append("client_id", lineLoginChannelId.value());
-      params.append("client_secret", lineLoginChannelSecret.value());
-
-      const tokenResponse = await axios.post(
-        "https://api.line.me/oauth2/v2.1/token",
-        params
-      );
-      const { access_token } = tokenResponse.data;
-      const profileResponse = await axios.get(
-        "https://api.line.me/v2/profile",
-        { headers: { Authorization: `Bearer ${access_token}` } }
-      );
-
-      await db.collection("users").doc(request.auth.uid).set(
-        {
-          isLineLinked: true,
-          lineUserId: profileResponse.data.userId,
-          lineDisplayName: profileResponse.data.displayName,
-        },
-        { merge: true }
-      );
-
-      return { success: true };
-    } catch (error: any) {
-      throw new HttpsError("internal", error.message);
-    }
-  }
-);
-
-// 2. AI (Magic Karte) - 自動モデル選択版
-export const getAiRecommendation = onCall(
-  { secrets: [geminiApiKey] },
-  async (request) => {
-    if (!request.auth)
-      throw new HttpsError("unauthenticated", "Login required");
-
-    const apiKey = geminiApiKey.value();
-    const { roughNote } = request.data;
-
-    if (!apiKey)
-      return {
-        rawText: JSON.stringify({
-          technical: "APIキーエラー",
-          line: "設定を確認してください",
-        }),
-      };
-
-    const prompt = `
-      美容師のアシスタントAIです。
-      以下の【メモ】を元に、JSONデータのみを出力してください。
-      挨拶や余計な文章は一切不要です。
-
-      【メモ】
-      ${roughNote}
-
-      【出力形式】
-      {
-          "technical": "美容師向けの専門的なカルテ文章（施術内容、薬剤など）",
-          "line": "お客様へ送るサンクスLINEの文章（絵文字を使い、親しみやすく）"
-      }
-    `;
-
-    try {
-      // 1. まず利用可能なモデル一覧を取得する (ListModels)
-      const listUrl = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`;
-      const listRes = await axios.get(listUrl);
-      const models = listRes.data?.models || [];
-
-      // 2. 生成可能なモデルの中から、最新のGeminiを探す
-      // 優先順位: 1.5-flash -> 1.5-pro -> 1.0-pro -> 何でもいいからgemini
-      let targetModelName = "";
-
-      const generationModels = models.filter((m: any) =>
-        m.supportedGenerationMethods?.includes("generateContent")
-      );
-
-      // 優先モデルを探す
-      const flash = generationModels.find((m: any) =>
-        m.name.includes("gemini-1.5-flash")
-      );
-      const pro15 = generationModels.find((m: any) =>
-        m.name.includes("gemini-1.5-pro")
-      );
-      const pro10 = generationModels.find((m: any) =>
-        m.name.includes("gemini-1.0-pro")
-      );
-      const anyGemini = generationModels.find((m: any) =>
-        m.name.includes("gemini")
-      );
-
-      if (flash) targetModelName = flash.name;
-      else if (pro15) targetModelName = pro15.name;
-      else if (pro10) targetModelName = pro10.name;
-      else if (anyGemini) targetModelName = anyGemini.name;
-      else if (generationModels.length > 0)
-        targetModelName = generationModels[0].name;
-      else throw new Error("利用可能なAIモデルが見つかりません");
-
-      // targetModelName は "models/gemini-1.5-flash-001" のような形式で返ってくる
-      // URL生成時に models/ が重複しないように調整
-      const modelId = targetModelName.replace("models/", "");
-      console.log("Selected AI Model:", modelId);
-
-      // 3. 確定したモデルで生成を実行
-      const generateUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${apiKey}`;
-
-      const response = await axios.post(
-        generateUrl,
-        {
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { responseMimeType: "application/json" },
-        },
-        { headers: { "Content-Type": "application/json" } }
-      );
-
-      const candidates = response.data?.candidates;
-      if (!candidates || candidates.length === 0) {
-        throw new Error("No response from AI");
-      }
-
-      let text = candidates[0].content.parts[0].text;
-
-      // クリーニング
-      text = text
-        .replace(/```json/g, "")
-        .replace(/```/g, "")
-        .trim();
-      try {
-        JSON.parse(text);
-      } catch (e) {
-        const firstBrace = text.indexOf("{");
-        const lastBrace = text.lastIndexOf("}");
-        if (firstBrace !== -1 && lastBrace !== -1) {
-          text = text.substring(firstBrace, lastBrace + 1);
-        }
-      }
-
-      return { rawText: text };
-    } catch (e: any) {
-      console.error("AI Auto-Detect Error:", e.response?.data || e.message);
-
-      let errorMsg = "AIエラー";
-      if (
-        e.response?.status === 400 &&
-        e.response?.data?.error?.message?.includes("API key not valid")
-      ) {
-        errorMsg = "APIキーが無効です";
-      } else if (e.response?.status === 429) {
-        errorMsg = "混雑中: 時間を置いて再試行してください";
-      } else if (e.message) {
-        errorMsg = "エラー: " + e.message;
-      }
-
-      return {
-        rawText: JSON.stringify({
-          technical: errorMsg,
-          line: "（手動で入力してください）",
-        }),
-      };
-    }
-  }
-);
-
-// 3. 商品検索
-export const searchProduct = onCall(
-  { secrets: [yahooAppId] },
-  async (request) => {
-    if (!request.auth)
-      throw new HttpsError("unauthenticated", "Login required");
-    const { code } = request.data;
-    const appId = yahooAppId.value();
-    if (!code || !appId) return { name: null };
-    try {
-      const res = await axios.get(
-        `https://shopping.yahooapis.jp/ShoppingWebService/V3/itemSearch?appid=${appId}&jan_code=${code}&results=1`
-      );
-      return { name: res.data.hits?.[0]?.name || null };
-    } catch (e) {
-      return { name: null };
-    }
-  }
-);
-
-// 4. サンクスLINE自動送信
-export const sendAutoThanksLine = onDocumentCreated(
-  { document: "logs/{logId}", secrets: [lineBotToken, lineBotSecret] },
-  async (event) => {
-    const snapshot = event.data;
-    if (!snapshot) return;
-    const logData = snapshot.data();
-
-    const stylistId = logData.stylistId || logData.authorId;
-    const customerId = logData.customerId;
-    const customLineMessage = logData.customLineMessage;
-
-    if (!stylistId || !customerId) {
-      return;
-    }
-
-    try {
-      const settingsRef = db
-        .collection("users")
-        .doc(stylistId)
-        .collection("system")
-        .doc("auto_messages");
-      const settingsSnap = await settingsRef.get();
-      const settings = settingsSnap.exists
-        ? settingsSnap.data()
-        : { enabled: true };
-
-      if (settings?.enabled === false) {
-        return;
-      }
-
-      const customerRef = await db.collection("users").doc(customerId).get();
-      const lineUserId = customerRef.data()?.lineUserId;
-      const customerName = customerRef.data()?.name || "お客様";
-
-      if (!lineUserId) {
-        return;
-      }
-
-      const template =
-        settings?.template ||
-        "{name}様\n\n本日はご来店ありがとうございました！";
-      const msg =
-        customLineMessage || template.replace(/\{name\}/g, customerName);
-
-      const token = lineBotToken.value();
-      const secret = lineBotSecret.value();
-
-      if (!token) return;
-
-      const client = new line.Client({
-        channelAccessToken: token,
-        channelSecret: secret,
-      });
-      await client.pushMessage(lineUserId, { type: "text", text: msg });
-    } catch (e) {
-      console.error("[ThanksLine] Error", e);
-    }
-  }
-);
-
-// 5. LINE Webhook
-export const lineWebhook = onRequest(
-  { secrets: [lineBotToken, lineBotSecret] },
-  async (req, res) => {
-    res.json({ success: true });
-  }
-);
-
-// 6. 予約作成通知
-export const notifyOnReservationCreated = onDocumentCreated(
-  {
-    document: "reservations/{reservationId}",
-    secrets: [lineBotToken, lineBotSecret],
-  },
-  async (event) => {
-    const snapshot = event.data;
-    if (!snapshot) return;
-    const data = snapshot.data();
-    const { stylistId, customerId, customerName, date, time, createdBy } = data;
-
-    const token = lineBotToken.value();
-    const secret = lineBotSecret.value();
-    const msg = `【予約完了】\n${customerName}様\n📅 ${date} ${time}`;
-
-    if (createdBy === customerId) {
-      await sendPushNotification(stylistId, "新着予約", msg);
-      await sendLineNotification(stylistId, msg, token, secret);
-    } else if (createdBy === stylistId) {
-      await sendPushNotification(customerId, "予約のお知らせ", msg);
-      await sendLineNotification(customerId, msg, token, secret);
-    } else {
-      await sendPushNotification(stylistId, "新着予約", msg);
-      await sendPushNotification(customerId, "予約のお知らせ", msg);
-    }
-
-    try {
-      const connectionsRef = db.collection("connections");
-      const querySnapshot = await connectionsRef
-        .where("stylistId", "==", stylistId)
-        .where("customerId", "==", customerId)
-        .get();
-      if (!querySnapshot.empty) {
-        const batch = db.batch();
-        querySnapshot.docs.forEach((doc) => {
-          batch.update(doc.ref, { nextReservation: date });
-        });
-        await batch.commit();
-      }
-    } catch (e) {
-      console.error("Next reservation error", e);
-    }
-  }
-);
-
-// 7. 予約キャンセル通知
-export const notifyOnReservationDeleted = onDocumentDeleted(
-  {
-    document: "reservations/{reservationId}",
-    secrets: [lineBotToken, lineBotSecret],
-  },
-  async (event) => {
-    const snapshot = event.data;
-    if (!snapshot) return;
-    const data = snapshot.data();
-    const { stylistId, customerId, customerName, date, time } = data;
-    const token = lineBotToken.value();
-    const secret = lineBotSecret.value();
-    const msg = `【予約キャンセル】\n${customerName}様\n📅 ${date} ${time}\n予約が取り消されました。`;
-
-    await sendPushNotification(stylistId, "予約キャンセル", msg);
-    await sendLineNotification(stylistId, msg, token, secret);
-    await sendPushNotification(customerId, "予約キャンセル", msg);
-    await sendLineNotification(customerId, msg, token, secret);
-  }
-);
-
-// 8. リマインダー通知
-export const sendDailyReminders = onSchedule(
-  "every day 09:00",
-  async (event) => {
-    const today = new Date();
-    today.setDate(today.getDate() + 1);
-    const tomorrowStr = today.toISOString().split("T")[0];
-    const snapshot = await db
-      .collection("reservations")
-      .where("date", "==", tomorrowStr)
-      .get();
-    if (snapshot.empty) return;
-
-    snapshot.forEach(async (doc) => {
-      const data = doc.data();
-      const msg = `【リマインダー】\n明日 ${data.time} よりご予約がございます。\nお待ちしております！`;
-      await sendPushNotification(data.customerId, "ご予約のリマインダー", msg);
-    });
-  }
-);
 </file>
 
 <file path="functions/package.json">
@@ -3389,6 +1383,279 @@ messaging.onBackgroundMessage((payload) => {
 </html>
 </file>
 
+<file path="src/components/MyPage/MyPage.vue">
+<script setup lang="ts">
+import { onMounted, computed } from "vue";
+import { useNextNs } from "@/composables/useNextNs";
+import {
+  Chart as ChartJS,
+  RadialLinearScale,
+  PointElement,
+  LineElement,
+  Filler,
+  Tooltip,
+  Legend,
+} from "chart.js";
+import { Radar } from "vue-chartjs";
+
+ChartJS.register(
+  RadialLinearScale,
+  PointElement,
+  LineElement,
+  Filler,
+  Tooltip,
+  Legend
+);
+
+const {
+  fetchHistory,
+  studyLogs,
+  loading,
+  currentLevel,
+  levelProgress,
+  currentRank,
+  totalExp,
+} = useNextNs();
+
+onMounted(() => {
+  fetchHistory();
+});
+
+const chartData = computed(() => {
+  // データが空の場合のデフォルト表示
+  if (studyLogs.value.length === 0) {
+    return {
+      labels: ["必修", "一般", "状況設定", "解剖生理", "基礎看護", "精神"],
+      datasets: [
+        {
+          label: "正答率 (%)",
+          data: [0, 0, 0, 0, 0, 0],
+          backgroundColor: "rgba(59, 130, 246, 0.2)",
+          borderColor: "#3b82f6",
+        },
+      ],
+    };
+  }
+
+  const stats: Record<string, { total: number; correct: number }> = {};
+
+  studyLogs.value.forEach((log) => {
+    if (log.question && Array.isArray(log.question.tags)) {
+      log.question.tags.forEach((tag) => {
+        if (!stats[tag]) stats[tag] = { total: 0, correct: 0 };
+        stats[tag].total++;
+        if (log.isCorrect) stats[tag].correct++;
+      });
+    }
+  });
+
+  let topTags = Object.keys(stats)
+    .sort((a, b) => stats[b].total - stats[a].total)
+    .slice(0, 6);
+
+  // タグが少ない場合にデフォルトを補充
+  if (topTags.length < 3) {
+    const defaults = [
+      "必修",
+      "一般",
+      "状況設定",
+      "解剖生理",
+      "基礎看護",
+      "精神",
+    ];
+    defaults.forEach((t) => {
+      if (!topTags.includes(t)) topTags.push(t);
+    });
+    topTags = topTags.slice(0, 6);
+  }
+
+  const dataValues = topTags.map((tag) => {
+    const s = stats[tag];
+    if (!s) return 0;
+    return Math.round((s.correct / s.total) * 100);
+  });
+
+  return {
+    labels: topTags,
+    datasets: [
+      {
+        label: "正答率 (%)",
+        backgroundColor: "rgba(59, 130, 246, 0.2)",
+        borderColor: "#3b82f6",
+        pointBackgroundColor: "#3b82f6",
+        pointBorderColor: "#fff",
+        pointHoverBackgroundColor: "#fff",
+        pointHoverBorderColor: "#3b82f6",
+        data: dataValues,
+      },
+    ],
+  };
+});
+
+const chartOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  scales: {
+    r: {
+      angleLines: { color: "rgba(0, 0, 0, 0.05)" },
+      grid: { color: "rgba(0, 0, 0, 0.05)" },
+      pointLabels: {
+        font: { size: 10, weight: "bold" as const },
+        color: "#64748b",
+      },
+      suggestedMin: 0,
+      suggestedMax: 100,
+      ticks: { stepSize: 20, display: false },
+    },
+  },
+  plugins: {
+    legend: { display: false },
+  },
+};
+
+const formatDate = (date: any) => {
+  if (!date) return "";
+  const d =
+    date instanceof Date ? date : date.toDate ? date.toDate() : new Date(date);
+  return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(
+    d.getMinutes()
+  ).padStart(2, "0")}`;
+};
+</script>
+
+<template>
+  <div class="pb-24 animate-fade-in">
+    <div
+      class="bg-gradient-to-br from-indigo-600 to-purple-700 rounded-3xl p-6 text-white shadow-lg shadow-indigo-200 mb-6 relative overflow-hidden"
+    >
+      <div class="relative z-10">
+        <div class="flex justify-between items-start mb-4">
+          <div>
+            <p class="text-[10px] font-bold opacity-70 mb-1">CURRENT RANK</p>
+            <h2 class="text-2xl font-black tracking-tight">
+              {{ currentRank }}
+            </h2>
+          </div>
+          <div
+            class="bg-white/20 backdrop-blur-sm px-3 py-1 rounded-full border border-white/10"
+          >
+            <span class="font-black text-sm">Lv.{{ currentLevel }}</span>
+          </div>
+        </div>
+
+        <div class="flex justify-between text-xs font-bold opacity-80 mb-2">
+          <span>EXP: {{ totalExp }}</span>
+          <span>Next: {{ 100 - levelProgress }}xp</span>
+        </div>
+
+        <div
+          class="w-full bg-black/20 h-3 rounded-full overflow-hidden backdrop-blur-sm border border-white/10"
+        >
+          <div
+            class="bg-yellow-400 h-full rounded-full transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(250,204,21,0.6)]"
+            :style="{ width: `${levelProgress}%` }"
+          ></div>
+        </div>
+      </div>
+
+      <div
+        class="absolute -right-8 -top-8 w-40 h-40 bg-white opacity-10 rounded-full blur-3xl"
+      ></div>
+      <div
+        class="absolute -left-8 -bottom-8 w-32 h-32 bg-purple-400 opacity-20 rounded-full blur-3xl"
+      ></div>
+    </div>
+
+    <div
+      class="bg-white p-4 rounded-3xl shadow-sm border border-slate-100 mb-8 relative"
+    >
+      <h3 class="absolute top-4 left-6 text-xs font-bold text-slate-400">
+        分野別傾向
+      </h3>
+      <div class="h-[250px] w-full mt-2">
+        <Radar v-if="chartData" :data="chartData" :options="chartOptions" />
+      </div>
+    </div>
+
+    <div>
+      <h3 class="font-bold text-slate-700 text-lg mb-4 px-1">学習履歴</h3>
+
+      <div v-if="loading" class="text-center py-10">
+        <div
+          class="animate-spin w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full mx-auto"
+        ></div>
+      </div>
+
+      <div
+        v-else-if="studyLogs.length === 0"
+        class="text-center py-10 text-slate-400"
+      >
+        <p class="text-3xl mb-2">📝</p>
+        <p class="text-xs font-bold">まだ履歴がありません</p>
+      </div>
+
+      <div v-else class="space-y-3">
+        <div
+          v-for="log in studyLogs"
+          :key="log.id"
+          class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-start gap-3 transition hover:border-blue-200"
+        >
+          <div
+            class="w-10 h-10 rounded-full flex items-center justify-center text-lg flex-shrink-0"
+            :class="
+              log.isCorrect
+                ? 'bg-blue-50 text-blue-500'
+                : 'bg-red-50 text-red-500'
+            "
+          >
+            {{ log.isCorrect ? "⭕️" : "❌" }}
+          </div>
+
+          <div class="flex-1 min-w-0">
+            <div class="flex justify-between items-start mb-1">
+              <span
+                class="text-[10px] font-bold text-slate-400 bg-slate-50 px-2 py-0.5 rounded"
+              >
+                {{ formatDate(log.createdAt) }}
+              </span>
+            </div>
+            <p
+              class="text-sm font-bold text-slate-700 line-clamp-2 leading-relaxed"
+            >
+              {{ log.question?.text || "問題文なし" }}
+            </p>
+            <div class="mt-2 flex gap-1 overflow-hidden">
+              <span
+                v-for="tag in log.question?.tags"
+                :key="tag"
+                class="text-[9px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded"
+                >#{{ tag }}</span
+              >
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.animate-fade-in {
+  animation: fadeIn 0.4s ease-out;
+}
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+</style>
+</file>
+
 <file path="src/components/NotificationBell/NotificationBell.vue">
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted } from "vue";
@@ -3569,189 +1836,281 @@ const getTypeStyles = (type: string) => {
 </style>
 </file>
 
-<file path="src/components/ReservationModal/ReservationModal.ts">
-import { ref, computed, watch } from "vue";
-import { useHairLink, type TimeSlot } from "@/composables/useNextNs";
-import type BaseModal from "@/uiParts/BaseModal/BaseModal.vue";
-import { getAuth } from "firebase/auth";
+<file path="src/components/QuizCard/QuizCard.vue">
+<script setup lang="ts">
+import { ref, watch, computed } from "vue";
+import type { Question } from "@/types";
+import { useNextNs } from "@/composables/useNextNs";
 
-export const MENU_OPTIONS = [
-  "カット",
-  "カラー",
-  "カット + カラー",
-  "パーマ",
-  "カット + パーマ",
-  "縮毛矯正",
-  "トリートメント",
-  "ヘッドスパ",
-  "カウンセリングのみ",
-  "その他",
-];
+const {
+  askAI,
+  aiResponse,
+  isAiThinking,
+  toggleBookmark,
+  bookmarkedIds,
+  clearedQuestionIds,
+} = useNextNs();
 
-export function useReservationModal(emit: (event: "saved") => void) {
-  const { fetchMyStylists, getAvailableSlots, makeReservation, myStylists } =
-    useHairLink();
-  const auth = getAuth();
+const props = defineProps<{
+  question: Question;
+  index: number;
+}>();
 
-  const baseModalRef = ref<InstanceType<typeof BaseModal> | null>(null);
-  const loading = ref(false);
+const emit = defineEmits<{
+  (
+    e: "answer",
+    isCorrect: boolean,
+    choiceIndex: number,
+    confidence: "ok" | "so-so" | "ng"
+  ): void;
+}>();
 
-  const step = ref(1);
-  const selectedStylistId = ref("");
-  const selectedDate = ref("");
-  const selectedTime = ref("");
-  const selectedMenu = ref(MENU_OPTIONS[2]);
-  const availableSlots = ref<TimeSlot[]>([]);
+const selectedIndex = ref<number | null>(null);
+const isAnswered = ref(false);
+const showAiComment = ref(false);
 
-  // ★追加: 美容師が顧客の予約を入れるための情報
-  const targetCustomer = ref<{ uid: string; name: string } | null>(null);
+// 克服済みかどうか
+const isCleared = computed(() =>
+  clearedQuestionIds.value.has(props.question.id)
+);
 
-  const minDate = computed(() => new Date().toISOString().slice(0, 10));
+// 前回の自信度（復習モード用）
+const lastConfidence = computed(() => props.question.lastResult?.confidence);
+const lastCorrect = computed(() => props.question.lastResult?.isCorrect);
 
-  watch([selectedStylistId, selectedDate], async ([newStylistId, newDate]) => {
-    if (!newStylistId || !newDate) {
-      availableSlots.value = [];
-      return;
-    }
+watch(
+  () => props.question.id,
+  () => {
+    selectedIndex.value = null;
+    isAnswered.value = false;
+    showAiComment.value = false;
+  }
+);
 
-    selectedTime.value = "";
-    availableSlots.value = [];
+const handleChoice = (idx: number) => {
+  if (isAnswered.value) return;
+  selectedIndex.value = idx;
+};
 
-    loading.value = true;
-    try {
-      const slots = await getAvailableSlots(newStylistId, newDate);
+// 自信度ボタンが押されたら確定
+const submitWithConfidence = (confidence: "ok" | "so-so" | "ng") => {
+  if (selectedIndex.value === null) return;
 
-      if (slots.length === 0) {
-        console.warn(
-          "予約枠データの取得に失敗したか、枠がありません。デフォルト枠を表示します。"
-        );
-        for (let i = 10; i < 22; i++) {
-          slots.push({ time: `${i}:00`, isAvailable: true });
-          slots.push({ time: `${i}:30`, isAvailable: true });
-        }
-      }
-      availableSlots.value = slots;
-    } catch (e) {
-      console.error("時間枠取得エラー", e);
-      const fallbackSlots = [];
-      for (let i = 10; i < 22; i++) {
-        fallbackSlots.push({ time: `${i}:00`, isAvailable: true });
-        fallbackSlots.push({ time: `${i}:30`, isAvailable: true });
-      }
-      availableSlots.value = fallbackSlots;
-    } finally {
-      loading.value = false;
-    }
-  });
+  isAnswered.value = true;
+  const isCorrect = props.question.correctIndices.includes(selectedIndex.value);
+  emit("answer", isCorrect, selectedIndex.value, confidence);
+};
 
-  // ★修正: show関数に引数を追加して、美容師による代理予約に対応
-  const show = async (options?: {
-    isProxy?: boolean;
-    stylistId?: string;
-    customer?: { uid: string; name: string };
-  }) => {
-    // 初期化
-    step.value = 1;
-    selectedStylistId.value = "";
-    selectedDate.value = minDate.value;
-    selectedTime.value = "";
-    availableSlots.value = [];
-    loading.value = false;
-    targetCustomer.value = null; // リセット
+const handleAskAi = async () => {
+  showAiComment.value = true;
+  if (!aiResponse.value || !isAiThinking.value) {
+    await askAI(props.question);
+  }
+};
+</script>
 
-    baseModalRef.value?.show();
+<template>
+  <div
+    class="bg-white rounded-3xl p-6 shadow-sm border mb-6 transition-all duration-300 relative overflow-hidden"
+    :class="
+      isCleared ? 'border-orange-300 bg-orange-50/50' : 'border-slate-100'
+    "
+  >
+    <div
+      v-if="isCleared"
+      class="absolute top-0 left-0 bg-orange-400 text-white text-[10px] font-bold px-3 py-1 rounded-br-xl z-20"
+    >
+      🎉 克服！
+    </div>
 
-    // ★美容師による代理予約モード
-    if (options?.isProxy && options.stylistId && options.customer) {
-      targetCustomer.value = options.customer;
-      selectedStylistId.value = options.stylistId; // 自分自身をセット
-      step.value = 2; // 美容師選択をスキップして日時選択へ
-      return;
-    }
+    <div
+      v-if="lastConfidence"
+      class="absolute top-0 left-0 z-10 flex gap-1 p-2"
+    >
+      <span
+        v-if="lastCorrect === false"
+        class="bg-red-100 text-red-600 text-[10px] font-bold px-2 py-0.5 rounded"
+        >前回: 不正解</span
+      >
+      <span
+        v-if="lastConfidence === 'so-so'"
+        class="bg-yellow-100 text-yellow-600 text-[10px] font-bold px-2 py-0.5 rounded"
+        >前回: 🔺</span
+      >
+      <span
+        v-if="lastConfidence === 'ng'"
+        class="bg-red-100 text-red-600 text-[10px] font-bold px-2 py-0.5 rounded"
+        >前回: ❌</span
+      >
+    </div>
 
-    // 通常モード（顧客が予約）
-    loading.value = true;
-    try {
-      await fetchMyStylists();
-    } finally {
-      loading.value = false;
-    }
+    <button
+      @click.stop="toggleBookmark(question)"
+      class="absolute top-0 right-0 p-4 z-10 transition-transform active:scale-90 hover:scale-110"
+      :title="bookmarkedIds.has(question.id) ? '保存を解除' : '問題を保存'"
+    >
+      <span class="text-2xl filter drop-shadow-sm">
+        {{ bookmarkedIds.has(question.id) ? "🔖" : "📑" }}
+      </span>
+    </button>
 
-    if (myStylists.value.length === 0) {
-      step.value = 0;
-    } else if (myStylists.value.length === 1) {
-      selectedStylistId.value = myStylists.value[0].id;
-      step.value = 2;
-    }
-  };
+    <div class="flex justify-between items-center mb-4 pr-8 pt-6">
+      <span
+        class="text-[10px] font-bold bg-slate-100 text-slate-500 px-2 py-1 rounded-full"
+      >
+        {{ question.examYear }} {{ question.questionNumber }}
+      </span>
+      <div class="flex gap-1">
+        <span
+          v-for="tag in question.tags"
+          :key="tag"
+          class="text-[10px] text-blue-500 font-bold bg-blue-50 px-2 py-0.5 rounded-full"
+        >
+          #{{ tag }}
+        </span>
+      </div>
+    </div>
 
-  const close = () => {
-    baseModalRef.value?.close();
-  };
+    <h3 class="font-bold text-slate-800 text-lg mb-6 leading-relaxed">
+      <span class="text-blue-600 mr-2">Q{{ index + 1 }}.</span>
+      {{ question.text }}
+    </h3>
 
-  const selectTime = (time: string) => {
-    selectedTime.value = time;
-  };
+    <div class="space-y-3">
+      <button
+        v-for="(choice, idx) in question.choices"
+        :key="idx"
+        @click="handleChoice(idx)"
+        class="w-full text-left p-4 rounded-xl border-2 transition-all duration-200 font-bold text-sm relative"
+        :class="{
+          'border-slate-100 hover:bg-slate-50 text-slate-600':
+            !isAnswered && selectedIndex !== idx,
+          'border-blue-500 bg-blue-50 text-blue-700':
+            selectedIndex === idx && !isAnswered,
+          'border-slate-300 bg-slate-100 text-slate-400':
+            isAnswered && selectedIndex !== idx,
+          'border-blue-400 bg-blue-50 text-blue-700':
+            isAnswered && question.correctIndices.includes(idx),
+          'border-red-400 bg-red-50 text-red-500 opacity-60':
+            isAnswered &&
+            selectedIndex === idx &&
+            !question.correctIndices.includes(idx),
+        }"
+        :disabled="isAnswered"
+      >
+        <span
+          class="absolute left-4 top-1/2 -translate-y-1/2 font-mono opacity-30"
+          >{{ idx + 1 }}</span
+        >
+        <span class="pl-6">{{ choice }}</span>
 
-  const nextStep = () => {
-    if (step.value === 2 && !selectedTime.value)
-      return alert("時間を選択してください");
-    step.value++;
-  };
+        <span
+          v-if="isAnswered && question.correctIndices.includes(idx)"
+          class="absolute right-4 text-lg"
+          >🙆‍♂️</span
+        >
+        <span
+          v-if="
+            isAnswered &&
+            selectedIndex === idx &&
+            !question.correctIndices.includes(idx)
+          "
+          class="absolute right-4 text-lg"
+          >🙅‍♀️</span
+        >
+      </button>
+    </div>
 
-  const prevStep = () => {
-    step.value--;
-  };
+    <div
+      v-if="selectedIndex !== null && !isAnswered"
+      class="mt-6 pt-4 border-t border-dashed border-slate-200 animate-fade-in"
+    >
+      <p class="text-center text-xs font-bold text-slate-500 mb-3">
+        この回答の自信は？
+      </p>
+      <div class="flex gap-2 justify-center">
+        <button
+          @click="submitWithConfidence('ok')"
+          class="flex-1 py-3 rounded-xl bg-blue-50 text-blue-600 font-bold border border-blue-100 hover:bg-blue-100 transition shadow-sm"
+        >
+          ⭕️ 自信あり
+        </button>
+        <button
+          @click="submitWithConfidence('so-so')"
+          class="flex-1 py-3 rounded-xl bg-yellow-50 text-yellow-600 font-bold border border-yellow-100 hover:bg-yellow-100 transition shadow-sm"
+        >
+          🔺 あやふや
+        </button>
+        <button
+          @click="submitWithConfidence('ng')"
+          class="flex-1 py-3 rounded-xl bg-red-50 text-red-600 font-bold border border-red-100 hover:bg-red-100 transition shadow-sm"
+        >
+          ❌ 自信なし
+        </button>
+      </div>
+    </div>
 
-  const submitReservation = async () => {
-    loading.value = true;
-    try {
-      if (!selectedStylistId.value)
-        throw new Error("美容師IDが設定されていません");
+    <div
+      v-if="isAnswered"
+      class="mt-6 pt-6 border-t border-dashed border-slate-200 animate-fade-in"
+    >
+      <p class="text-xs font-bold text-slate-400 mb-2">解説</p>
+      <div
+        class="text-sm text-slate-700 leading-relaxed bg-slate-50 p-4 rounded-xl mb-4"
+      >
+        {{ question.explanation }}
+      </div>
 
-      // ★修正: ターゲット顧客情報を渡す
-      await makeReservation(
-        {
-          stylistId: selectedStylistId.value,
-          date: selectedDate.value,
-          time: selectedTime.value,
-          menu: selectedMenu.value,
-        },
-        targetCustomer.value || undefined
-      );
+      <button
+        v-if="!showAiComment"
+        @click="handleAskAi"
+        class="w-full py-3 bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 flex items-center justify-center gap-2 hover:opacity-90 transition active:scale-95"
+      >
+        <span>🤖</span> AI先生に詳しく聞く
+      </button>
 
-      alert("予約が完了しました！");
-      emit("saved");
-      close();
-    } catch (e: any) {
-      console.error("予約エラー:", e);
-      alert(`予約に失敗しました。\n${e.message}`);
-    } finally {
-      loading.value = false;
-    }
-  };
+      <div
+        v-else
+        class="bg-indigo-50 p-4 rounded-xl border border-indigo-100 animate-fade-in"
+      >
+        <div class="flex items-center gap-2 mb-2">
+          <span class="text-xl">🤖</span>
+          <span class="text-xs font-bold text-indigo-800">AI先生の解説</span>
+        </div>
 
-  return {
-    baseModalRef,
-    step,
-    loading,
-    myStylists,
-    selectedStylistId,
-    selectedDate,
-    selectedTime,
-    selectedMenu,
-    availableSlots,
-    minDate,
-    show,
-    close,
-    selectTime,
-    nextStep,
-    prevStep,
-    submitReservation,
-    MENU_OPTIONS,
-    targetCustomer, // UI表示用に追加
-  };
+        <div v-if="isAiThinking" class="flex flex-col items-center py-4">
+          <div
+            class="animate-spin w-5 h-5 border-2 border-indigo-500 border-t-transparent rounded-full mb-2"
+          ></div>
+          <p class="text-[10px] text-indigo-400">解説を生成中...</p>
+        </div>
+
+        <div
+          v-else
+          class="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap"
+        >
+          {{ aiResponse }}
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out;
 }
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+</style>
 </file>
 
 <file path="src/components/ReservationModal/ReservationModal.vue">
@@ -4086,100 +2445,6 @@ export function useSettingsTab(props: SettingsTabProps) {
 }
 </file>
 
-<file path="src/components/SettingsTab/SettingsTab.vue">
-<script setup lang="ts">
-import { ref, watch } from "vue";
-import { getAuth, updateProfile } from "firebase/auth";
-import BaseInput from "@/uiParts/BaseInput/BaseInput.vue";
-import type { User } from "@/types";
-
-// Props定義から THEMES, currentTheme を削除しました
-const props = defineProps<{
-  currentUser: User | null;
-}>();
-
-const emit = defineEmits(["saved"]);
-
-const editName = ref("");
-const isSaving = ref(false);
-
-// 初期値をセット
-watch(
-  () => props.currentUser,
-  (newVal) => {
-    if (newVal) {
-      editName.value = newVal.displayName || "";
-    }
-  },
-  { immediate: true }
-);
-
-const handleSave = async () => {
-  const auth = getAuth();
-  if (!auth.currentUser) return;
-
-  isSaving.value = true;
-  try {
-    // Firebase Authのプロフィール更新
-    await updateProfile(auth.currentUser, {
-      displayName: editName.value,
-    });
-    alert("プロフィールを更新しました✨");
-    emit("saved");
-  } catch (e) {
-    console.error(e);
-    alert("保存に失敗しました");
-  } finally {
-    isSaving.value = false;
-  }
-};
-</script>
-
-<template>
-  <div class="pb-24 space-y-6 animate-fade-in">
-    <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-      <h3 class="font-bold text-slate-800 text-lg mb-6">アカウント設定</h3>
-
-      <div class="mb-6">
-        <label
-          class="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-wider"
-          >お名前</label
-        >
-        <BaseInput v-model="editName" placeholder="表示名を入力" />
-      </div>
-
-      <button
-        @click="handleSave"
-        :disabled="isSaving"
-        class="w-full py-4 bg-slate-900 text-white font-bold rounded-xl hover:bg-slate-800 transition shadow-lg active:scale-95 disabled:opacity-50"
-      >
-        {{ isSaving ? "保存中..." : "変更を保存" }}
-      </button>
-    </div>
-
-    <div class="text-center">
-      <p class="text-xs text-slate-400">NextNs v1.0.0</p>
-    </div>
-  </div>
-</template>
-
-<style scoped>
-.animate-fade-in {
-  animation: fadeIn 0.3s ease-out;
-}
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-</style>
-</file>
-
 <file path="src/components/TheBottomNav/TheBottomNav.ts">
 // Propsの型定義
 export interface TheBottomNavProps {
@@ -4194,70 +2459,650 @@ export function useTheBottomNav() {
 }
 </file>
 
-<file path="src/components/TheBottomNav/TheBottomNav.vue">
+<file path="src/components/JsonUploader.vue">
 <script setup lang="ts">
-import { useRouter } from "vue-router";
+import { ref, onMounted } from "vue";
+import { db } from "@/firebase";
+import { collection, doc, writeBatch, getDocs } from "firebase/firestore";
 
-defineProps<{
-  currentTab: string;
-}>();
+const jsonInput = ref("");
+const status = ref("待機中");
+const isLoading = ref(false);
+const totalQuestions = ref<number | null>(null);
 
-defineEmits(["update:currentTab"]);
-const router = useRouter();
+// Firestoreから現在の問題数を取得
+const fetchTotalCount = async () => {
+  try {
+    const querySnapshot = await getDocs(collection(db, "questions"));
+    totalQuestions.value = querySnapshot.size;
+  } catch (e) {
+    console.error("カウント取得エラー:", e);
+  }
+};
 
-const btnClass =
-  "flex flex-col items-center justify-center w-14 h-full relative transition-all duration-200 active:scale-90";
-const activeClass = "text-blue-600 scale-105";
-const inactiveClass = "text-slate-400 hover:text-slate-600";
+onMounted(() => {
+  fetchTotalCount();
+});
+
+const handleUpload = async () => {
+  if (!jsonInput.value) return;
+
+  let questions;
+  try {
+    questions = JSON.parse(jsonInput.value);
+    if (!Array.isArray(questions)) {
+      alert("エラー: データが配列形式（[...]）ではありません。");
+      return;
+    }
+  } catch (e) {
+    alert("エラー: JSONの形式が正しくありません。");
+    return;
+  }
+
+  if (
+    !confirm(
+      `📦 ${questions.length}問のデータを検出しました。\nFirestoreに登録しますか？`
+    )
+  )
+    return;
+
+  isLoading.value = true;
+  status.value = "登録準備中...";
+
+  const total = questions.length;
+  const CHUNK_SIZE = 400;
+  const chunks = [];
+  for (let i = 0; i < total; i += CHUNK_SIZE) {
+    chunks.push(questions.slice(i, i + CHUNK_SIZE));
+  }
+
+  try {
+    let count = 0;
+    for (const chunk of chunks) {
+      const batch = writeBatch(db);
+      const colRef = collection(db, "questions");
+
+      chunk.forEach((q: any) => {
+        const newDocRef = doc(colRef);
+        batch.set(newDocRef, {
+          ...q,
+          id: newDocRef.id,
+          createdAt: new Date(),
+        });
+      });
+
+      await batch.commit();
+      count += chunk.length;
+      status.value = `登録中... ${count} / ${total} 完了`;
+    }
+
+    status.value = "✅ 登録完了！";
+    alert("すべてのデータが登録されました！");
+    jsonInput.value = "";
+    fetchTotalCount(); // カウント更新
+  } catch (e) {
+    console.error(e);
+    status.value = "❌ エラー発生";
+    alert("登録中にエラーが発生しました。");
+  } finally {
+    isLoading.value = false;
+  }
+};
 </script>
 
 <template>
-  <nav
-    class="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-sm h-16 bg-white/90 backdrop-blur-xl border border-white/40 shadow-2xl shadow-slate-200/50 rounded-full flex items-center justify-evenly z-50 px-2"
+  <div
+    class="p-5 border-2 border-dashed border-stone-300 my-5 rounded-lg bg-stone-50"
   >
-    <button
-      @click="$emit('update:currentTab', 'home')"
-      :class="[btnClass, currentTab === 'home' ? activeClass : inactiveClass]"
-    >
-      <span class="text-xl mb-0.5">🏠</span>
-      <span class="text-[9px] font-bold tracking-wide">ホーム</span>
-      <span
-        v-if="currentTab === 'home'"
-        class="absolute -bottom-1 w-1 h-1 bg-blue-600 rounded-full"
-      ></span>
-    </button>
+    <div class="flex justify-between items-center mb-4">
+      <h3 class="m-0 font-bold text-stone-700">
+        ⚡️ コピペ一発登録くん (Vue版)
+      </h3>
+      <div
+        class="bg-white px-4 py-1 rounded-full border border-stone-200 font-bold text-blue-600 text-sm"
+      >
+        📊 現在の問題数:
+        {{ totalQuestions === null ? "..." : `${totalQuestions}問` }}
+      </div>
+    </div>
 
-    <button
-      @click="$emit('update:currentTab', 'history')"
-      :class="[
-        btnClass,
-        currentTab === 'history' ? activeClass : inactiveClass,
-      ]"
-    >
-      <span class="text-xl mb-0.5">📖</span>
-      <span class="text-[9px] font-bold tracking-wide">履歴</span>
-      <span
-        v-if="currentTab === 'history'"
-        class="absolute -bottom-1 w-1 h-1 bg-blue-600 rounded-full"
-      ></span>
-    </button>
+    <p class="text-xs text-stone-500 mb-2">
+      ここにChatGPTが作ったJSONコード（ [ ... ] の中身すべて
+      ）を貼り付けてください。
+    </p>
 
-    <button
-      @click="$emit('update:currentTab', 'settings')"
-      :class="[
-        btnClass,
-        currentTab === 'settings' ? activeClass : inactiveClass,
-      ]"
-    >
-      <span class="text-xl mb-0.5">⚙️</span>
-      <span class="text-[9px] font-bold tracking-wide">設定</span>
+    <textarea
+      v-model="jsonInput"
+      placeholder='ここにJSONデータを貼り付け&#13;&#10;例: [{"text": "...", ...}]'
+      class="w-full h-40 p-3 font-mono text-xs border border-stone-300 rounded mb-3 focus:ring-2 focus:ring-blue-400 outline-none"
+    ></textarea>
+
+    <div class="flex items-center gap-3">
+      <button
+        @click="handleUpload"
+        :disabled="isLoading || !jsonInput"
+        class="px-5 py-2 bg-blue-600 text-white font-bold rounded hover:bg-blue-700 disabled:bg-stone-300 disabled:cursor-not-allowed transition"
+      >
+        {{ isLoading ? "処理中..." : "🔥 データを登録する" }}
+      </button>
       <span
-        v-if="currentTab === 'settings'"
-        class="absolute -bottom-1 w-1 h-1 bg-blue-600 rounded-full"
-      ></span>
-    </button>
-  </nav>
+        class="font-bold text-sm"
+        :class="status.includes('エラー') ? 'text-red-500' : 'text-stone-700'"
+      >
+        {{ status }}
+      </span>
+    </div>
+  </div>
 </template>
+</file>
+
+<file path="src/composables/useNextNs.ts">
+import { ref, computed, watch } from "vue";
+import { db, auth } from "@/firebase";
+import {
+  doc,
+  getDoc,
+  setDoc,
+  collection,
+  query,
+  limit,
+  getDocs,
+  addDoc,
+  deleteDoc,
+  serverTimestamp,
+  where,
+} from "firebase/firestore";
+import { onAuthStateChanged, signOut } from "firebase/auth";
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import axios from "axios";
+import type { Question, User, StudyLog } from "@/types";
+
+// --- ローカルストレージのキー ---
+const STORAGE_KEY_SESSION = "nextns_session_questions"; // 問題リスト
+const STORAGE_KEY_INDEX = "nextns_session_index"; // ★追加: 何問目まで解いたか
+
+// グローバルステート
+const currentUser = ref<User | null>(null);
+const questions = ref<Question[]>([]);
+const reviewQuestions = ref<Question[]>([]);
+const bookmarkedQuestions = ref<Question[]>([]);
+const bookmarkedIds = ref<Set<string>>(new Set());
+const studyLogs = ref<StudyLog[]>([]);
+const loading = ref(false);
+const clearedQuestionIds = ref<Set<string>>(new Set());
+
+// ★追加: 現在のセッションでの回答数（Q数カウント用）
+const currentSessionIndex = ref(0);
+
+const selectedPeriod = ref<"all" | "am" | "pm">("all");
+
+const todayLogCount = computed(() => {
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+  return studyLogs.value.filter((log) => {
+    const logDate =
+      log.createdAt instanceof Date
+        ? log.createdAt
+        : (log.createdAt as any)?.toDate
+        ? (log.createdAt as any).toDate()
+        : new Date(log.createdAt);
+    return logDate >= startOfDay;
+  }).length;
+});
+
+const availableTags = computed(() => {
+  const tags = new Set<string>();
+  const source = [
+    ...questions.value,
+    ...reviewQuestions.value,
+    ...bookmarkedQuestions.value,
+  ];
+  source.forEach((q) => {
+    if (q.tags && Array.isArray(q.tags)) {
+      q.tags.forEach((t) => tags.add(t));
+    }
+  });
+  return Array.from(tags);
+});
+
+const totalExp = computed(() => {
+  return studyLogs.value.reduce((total, log) => {
+    return total + (log.isCorrect ? 20 : 5);
+  }, 0);
+});
+
+const currentLevel = computed(() => {
+  return Math.floor(totalExp.value / 100) + 1;
+});
+
+const levelProgress = computed(() => {
+  return totalExp.value % 100;
+});
+
+const currentRank = computed(() => {
+  const lv = currentLevel.value;
+  if (lv < 5) return "新人ナースの卵";
+  if (lv < 10) return "駆け出しナース";
+  if (lv < 20) return "中堅ナース";
+  if (lv < 50) return "ベテランナース";
+  return "看護師長クラス";
+});
+
+export function useNextNs() {
+  const aiResponse = ref("");
+  const isAiThinking = ref(false);
+
+  // --- 中断セーブ・復帰機能 ---
+  const saveSession = () => {
+    if (questions.value.length > 0) {
+      localStorage.setItem(
+        STORAGE_KEY_SESSION,
+        JSON.stringify(questions.value)
+      );
+      // ★現在のカウント数も保存
+      localStorage.setItem(
+        STORAGE_KEY_INDEX,
+        String(currentSessionIndex.value)
+      );
+    }
+  };
+
+  const clearSession = () => {
+    localStorage.removeItem(STORAGE_KEY_SESSION);
+    localStorage.removeItem(STORAGE_KEY_INDEX);
+    questions.value = [];
+    currentSessionIndex.value = 0; // リセット
+  };
+
+  const restoreSession = () => {
+    const savedQuestions = localStorage.getItem(STORAGE_KEY_SESSION);
+    const savedIndex = localStorage.getItem(STORAGE_KEY_INDEX);
+
+    if (savedQuestions) {
+      try {
+        questions.value = JSON.parse(savedQuestions);
+        // ★保存されていたカウント数を復元
+        if (savedIndex) {
+          currentSessionIndex.value = parseInt(savedIndex, 10);
+        }
+        console.log("🔄 前回のセッションを復元しました");
+        return true;
+      } catch (e) {
+        console.error("セッション復元エラー", e);
+        return false;
+      }
+    }
+    return false;
+  };
+
+  // --- ブックマーク機能 ---
+  const toggleBookmark = async (question: Question) => {
+    let userId = currentUser.value?.uid;
+    if (!userId) {
+      const user = auth.currentUser;
+      if (user) {
+        userId = user.uid;
+        currentUser.value = {
+          uid: user.uid,
+          email: user.email || "",
+          role: "student",
+          createdAt: new Date(),
+        };
+      } else {
+        alert("ログインしてください");
+        return;
+      }
+    }
+
+    if (bookmarkedIds.value.has(question.id)) {
+      bookmarkedIds.value.delete(question.id);
+      bookmarkedQuestions.value = bookmarkedQuestions.value.filter(
+        (q) => q.id !== question.id
+      );
+      try {
+        const q = query(
+          collection(db, "bookmarks"),
+          where("userId", "==", userId),
+          where("questionId", "==", question.id)
+        );
+        const snap = await getDocs(q);
+        snap.forEach(async (d) => await deleteDoc(d.ref));
+      } catch (e) {
+        console.error(e);
+      }
+    } else {
+      bookmarkedIds.value.add(question.id);
+      bookmarkedQuestions.value.unshift(question);
+      try {
+        await addDoc(collection(db, "bookmarks"), {
+          userId: userId,
+          questionId: question.id,
+          question: question,
+          createdAt: serverTimestamp(),
+        });
+      } catch (e) {
+        console.error(e);
+        bookmarkedIds.value.delete(question.id);
+      }
+    }
+  };
+
+  const fetchBookmarks = async () => {
+    if (!currentUser.value) return;
+    try {
+      const q = query(
+        collection(db, "bookmarks"),
+        where("userId", "==", currentUser.value.uid)
+      );
+      const snap = await getDocs(q);
+      const items = snap.docs.map((d) => ({
+        ...d.data(),
+        createdAt: d.data().createdAt?.toDate
+          ? d.data().createdAt.toDate()
+          : new Date(),
+      }));
+      items.sort(
+        (a: any, b: any) => b.createdAt.getTime() - a.createdAt.getTime()
+      );
+
+      const list: Question[] = [];
+      const ids = new Set<string>();
+      items.forEach((data: any) => {
+        if (data.question) {
+          list.push(data.question as Question);
+          ids.add(data.questionId);
+        }
+      });
+      bookmarkedQuestions.value = list;
+      bookmarkedIds.value = ids;
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  // --- AI機能 ---
+  const askAI = async (question: Question, userQuery?: string) => {
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+    if (!apiKey) {
+      aiResponse.value = "⚠️ APIキーが設定されていません。";
+      return;
+    }
+    isAiThinking.value = true;
+    aiResponse.value = "";
+    try {
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const correctNumbers = question.correctIndices
+        .map((i) => i + 1)
+        .join(", ");
+      const prompt = `
+        あなたは看護学生の学習をサポートするチューターです。
+        【指示】
+        1. 「正解は ${correctNumbers} です」から始めてください。
+        2. なぜその答えになるのか、重要なキーワードを使って解説してください。
+        3. 他の選択肢がなぜ間違いなのか指摘してください。
+        【問題】${question.text}
+        【選択肢】${question.choices.map((c, i) => `${i + 1}. ${c}`).join("\n")}
+        【質問】${userQuery || "解説をお願いします。"}
+      `;
+      const result = await model.generateContent(prompt);
+      aiResponse.value = (await result.response).text();
+    } catch (e: any) {
+      aiResponse.value = "AIエラー: " + e.message;
+    } finally {
+      isAiThinking.value = false;
+    }
+  };
+
+  const initAuth = () => {
+    onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        if (!currentUser.value)
+          currentUser.value = {
+            uid: user.uid,
+            email: user.email || "",
+            role: "student",
+            createdAt: new Date(),
+          } as User;
+        await fetchUserProfile(user.uid);
+      } else {
+        currentUser.value = null;
+      }
+    });
+  };
+
+  const fetchUserProfile = async (uid: string) => {
+    try {
+      const snap = await getDoc(doc(db, "users", uid));
+      if (snap.exists()) currentUser.value = { uid, ...snap.data() } as User;
+      else
+        await setDoc(
+          doc(db, "users", uid),
+          {
+            uid,
+            email: auth.currentUser?.email,
+            role: "student",
+            createdAt: new Date(),
+          },
+          { merge: true }
+        );
+      await Promise.all([
+        fetchHistory(),
+        fetchReviewQuestions(),
+        fetchBookmarks(),
+      ]);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  // --- 回答保存 ---
+  const saveAnswer = async (
+    question: Question,
+    choiceIndex: number,
+    isCorrect: boolean,
+    confidence?: "ok" | "so-so" | "ng"
+  ) => {
+    let userId = currentUser.value?.uid;
+    if (!userId && auth.currentUser) userId = auth.currentUser.uid;
+    if (!userId) return;
+
+    const newLog: StudyLog = {
+      id: "temp_" + Date.now(),
+      userId,
+      questionId: question.id,
+      question,
+      userChoice: [choiceIndex],
+      isCorrect,
+      timeTaken: 10,
+      createdAt: new Date(),
+      confidence,
+    };
+    studyLogs.value.unshift(newLog);
+
+    if (!isCorrect || confidence === "so-so" || confidence === "ng") {
+      const existingIdx = reviewQuestions.value.findIndex(
+        (q) => q.id === question.id
+      );
+      const updatedQ = {
+        ...question,
+        lastResult: { isCorrect, confidence, userChoice: [choiceIndex] },
+      };
+      if (existingIdx !== -1) reviewQuestions.value.splice(existingIdx, 1);
+      reviewQuestions.value.unshift(updatedQ);
+      clearedQuestionIds.value.delete(question.id);
+    } else {
+      if (reviewQuestions.value.some((q) => q.id === question.id))
+        clearedQuestionIds.value.add(question.id);
+    }
+
+    // ★演習モードの進捗管理
+    const qIndex = questions.value.findIndex((q) => q.id === question.id);
+    if (qIndex !== -1) {
+      questions.value.splice(qIndex, 1); // リストから削除
+      currentSessionIndex.value++; // ★カウントアップ
+      saveSession(); // 状態保存
+    }
+
+    try {
+      await addDoc(collection(db, "study_logs"), {
+        userId,
+        questionId: question.id,
+        question,
+        userChoice: [choiceIndex],
+        isCorrect,
+        timeTaken: 10,
+        confidence: confidence || null,
+        createdAt: serverTimestamp(),
+      });
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const fetchHistory = async () => {
+    if (!currentUser.value) return;
+    try {
+      const q = query(
+        collection(db, "study_logs"),
+        where("userId", "==", currentUser.value.uid),
+        limit(100)
+      );
+      const snap = await getDocs(q);
+      const logs = snap.docs.map(
+        (d) =>
+          ({
+            id: d.id,
+            ...d.data(),
+            createdAt: d.data().createdAt?.toDate
+              ? d.data().createdAt.toDate()
+              : new Date(),
+          } as StudyLog)
+      );
+      studyLogs.value = logs.sort(
+        (a, b) => b.createdAt.getTime() - a.createdAt.getTime()
+      );
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const fetchReviewQuestions = async () => {
+    if (!currentUser.value) return;
+    try {
+      clearedQuestionIds.value.clear();
+      const q = query(
+        collection(db, "study_logs"),
+        where("userId", "==", currentUser.value.uid),
+        limit(300)
+      );
+      const snap = await getDocs(q);
+      const logs = snap.docs.map((d) => d.data() as StudyLog);
+      logs.sort(
+        (a: any, b: any) =>
+          a.createdAt.toDate().getTime() - b.createdAt.toDate().getTime()
+      );
+
+      const reviewMap = new Map<string, Question>();
+      logs.forEach((log) => {
+        if (log.question?.id) {
+          if (
+            !log.isCorrect ||
+            log.confidence === "so-so" ||
+            log.confidence === "ng"
+          ) {
+            reviewMap.set(log.question.id, {
+              ...log.question,
+              lastResult: {
+                isCorrect: log.isCorrect,
+                confidence: log.confidence,
+              },
+            });
+          } else if (log.isCorrect && log.confidence === "ok") {
+            reviewMap.delete(log.question.id);
+          }
+        }
+      });
+      reviewQuestions.value = Array.from(reviewMap.values()).reverse();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const logout = async () => {
+    clearSession();
+    await signOut(auth);
+    window.location.reload();
+  };
+
+  // --- 問題取得（フィルター対応） ---
+  const fetchQuestions = async (forceRefresh = false) => {
+    if (!forceRefresh && questions.value.length > 0) return;
+    if (!forceRefresh && restoreSession()) return; // 復元できたら終了
+
+    loading.value = true;
+    try {
+      const q = query(collection(db, "questions"), limit(1000));
+      const snap = await getDocs(q);
+      let list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Question));
+
+      if (selectedPeriod.value === "am") {
+        list = list.filter((q) => q.questionNumber.includes("午前"));
+      } else if (selectedPeriod.value === "pm") {
+        list = list.filter((q) => q.questionNumber.includes("午後"));
+      }
+
+      for (let i = list.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [list[i], list[j]] = [list[j], list[i]];
+      }
+
+      questions.value = list;
+      currentSessionIndex.value = 0; // ★新規取得時はカウントリセット
+      saveSession();
+    } catch (e) {
+      console.error("問題取得エラー:", e);
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  watch(selectedPeriod, () => {
+    clearSession();
+    fetchQuestions(true);
+  });
+
+  return {
+    currentUser,
+    questions,
+    reviewQuestions,
+    clearedQuestionIds,
+    bookmarkedQuestions,
+    bookmarkedIds,
+    studyLogs,
+    loading,
+    todayLogCount,
+    availableTags,
+    aiResponse,
+    isAiThinking,
+    totalExp,
+    currentLevel,
+    levelProgress,
+    currentRank,
+    selectedPeriod,
+    currentSessionIndex, // ★公開: UI側で使う
+    askAI,
+    initAuth,
+    logout,
+    fetchQuestions,
+    fetchHistory,
+    fetchReviewQuestions,
+    fetchBookmarks,
+    toggleBookmark,
+    saveAnswer,
+    clearSession,
+  };
+}
 </file>
 
 <file path="src/composables/useNotifications.ts">
@@ -4408,59 +3253,6 @@ export function useNotifications() {
 }
 </file>
 
-<file path="src/router/index.ts">
-import { createRouter, createWebHistory } from "vue-router";
-import { getAuth, onAuthStateChanged } from "firebase/auth";
-import HomeView from "../views/HomeView/HomeView.vue";
-import LoginView from "../views/LoginView/LoginView.vue";
-
-const router = createRouter({
-  history: createWebHistory(import.meta.env.BASE_URL),
-  routes: [
-    {
-      path: "/",
-      name: "home",
-      component: HomeView,
-      meta: { requiresAuth: true }, // 認証が必要なページ
-    },
-    {
-      path: "/login",
-      name: "login",
-      component: LoginView,
-      meta: { public: true }, // 誰でも見れるページ
-    },
-  ],
-});
-
-// 画面遷移のたびに実行される「門番」の処理
-router.beforeEach(async (to, from, next) => {
-  const auth = getAuth();
-
-  // Firebaseの認証状態が確定するまで待つプロミス（リロード対策）
-  const currentUser = await new Promise((resolve) => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      unsubscribe();
-      resolve(user);
-    });
-  });
-
-  const requiresAuth = to.matched.some((record) => record.meta.requiresAuth);
-
-  if (requiresAuth && !currentUser) {
-    // 認証が必要なのにログインしていない → ログイン画面へ飛ばす
-    next("/login");
-  } else if (to.path === "/login" && currentUser) {
-    // ログイン済みでログイン画面に来た → ホームへ飛ばす
-    next("/");
-  } else {
-    // それ以外 → そのまま通す
-    next();
-  }
-});
-
-export default router;
-</file>
-
 <file path="src/seed/questions.ts">
 import { Question } from "@/types"; // さっき作った型定義
 
@@ -4551,67 +3343,6 @@ export const seedQuestionsToFirestore = async () => {
     console.error("❌ エラー発生:", e);
     alert("エラーが発生しました。コンソールを確認してください。");
   }
-};
-</file>
-
-<file path="src/types/index.ts">
-// src/types/index.ts
-
-// 1. ユーザー情報
-export type User = {
-  uid: string;
-  email: string;
-  displayName?: string;
-  photoURL?: string;
-  role: "student" | "admin";
-  createdAt: any;
-};
-
-// 2. ユーザーの学習成績
-export type UserProfile = {
-  uid: string;
-  targetExam: string;
-  stats: {
-    totalAnswered: number;
-    totalCorrect: number;
-    tagAccuracy: { [key: string]: number };
-  };
-};
-
-// 3. 問題データ
-export type Question = {
-  id: string;
-  examYear: string;
-  questionNumber: string;
-  type: "mandatory" | "general" | "situation";
-  text: string;
-  imageUrl?: string;
-  choices: string[];
-  correctIndices: number[];
-  explanation: string;
-  tags: string[];
-};
-
-// 4. 学習履歴 (ログ)
-export type StudyLog = {
-  id: string;
-  userId: string;
-  questionId: string;
-  question: Question;
-
-  userChoice: number[];
-  isCorrect: boolean;
-  timeTaken: number;
-
-  createdAt: any;
-
-  // ★追加: 自信度 ('ok'=自信あり, 'so-so'=あやふや, 'ng'=自信なし)
-  confidence?: "ok" | "so-so" | "ng";
-
-  aiChat?: {
-    userQuestion: string;
-    aiAnswer: string;
-  }[];
 };
 </file>
 
@@ -4711,6 +3442,1177 @@ defineExpose({
     </div>
   </dialog>
 </template>
+</file>
+
+<file path="src/views/LegalView/LegalView.vue">
+<script setup lang="ts">
+import { useRouter } from "vue-router";
+
+const router = useRouter();
+</script>
+
+<template>
+  <div class="min-h-screen bg-stone-50 p-6 text-stone-800 font-sans pb-20">
+    <div
+      class="max-w-md mx-auto bg-white p-8 rounded-3xl shadow-sm border border-stone-100"
+    >
+      <!-- ヘッダー & 戻るボタン -->
+      <div class="flex items-center gap-4 mb-8">
+        <button
+          @click="router.back()"
+          class="w-10 h-10 rounded-full bg-stone-100 flex items-center justify-center hover:bg-stone-200 transition"
+        >
+          ←
+        </button>
+        <h1 class="text-lg font-bold">特定商取引法に基づく表記</h1>
+      </div>
+
+      <div class="space-y-8 text-sm leading-relaxed">
+        <section>
+          <h2 class="font-bold text-stone-400 text-xs mb-1">販売業者</h2>
+          <p>吉岡 拓海</p>
+        </section>
+
+        <section>
+          <h2 class="font-bold text-stone-400 text-xs mb-1">代表責任者</h2>
+          <p>吉岡 拓海</p>
+        </section>
+
+        <section>
+          <h2 class="font-bold text-stone-400 text-xs mb-1">所在地</h2>
+          <!-- ★重要: 免許証等の記載通り、番地・建物名・部屋番号まで正確に記載してください -->
+          <p>
+            〒815-0041<br />福岡県福岡市南区野間1丁目 19-1 Cherim高宮Ⅱwest 201
+          </p>
+        </section>
+
+        <section>
+          <h2 class="font-bold text-stone-400 text-xs mb-1">電話番号</h2>
+          <p>080-6423-6435</p>
+        </section>
+
+        <section>
+          <h2 class="font-bold text-stone-400 text-xs mb-1">メールアドレス</h2>
+          <p>gongedonghuam@gmail.com</p>
+        </section>
+
+        <section>
+          <h2 class="font-bold text-stone-400 text-xs mb-1">販売価格</h2>
+          <p>
+            各プランの申し込みページに表示された金額（表示価格/消費税込）とします。
+          </p>
+        </section>
+
+        <section>
+          <h2 class="font-bold text-stone-400 text-xs mb-1">
+            商品代金以外の必要料金
+          </h2>
+          <p>
+            なし（インターネット接続料金その他の電気通信回線の通信に関する費用はお客様の負担となります）
+          </p>
+        </section>
+
+        <section>
+          <h2 class="font-bold text-stone-400 text-xs mb-1">支払方法</h2>
+          <p>クレジットカード決済（Stripe）</p>
+        </section>
+
+        <section>
+          <h2 class="font-bold text-stone-400 text-xs mb-1">支払時期</h2>
+          <ul class="list-disc list-inside pl-1 space-y-1">
+            <li>初回: 申し込み完了時にお支払いが確定します。</li>
+            <li>2回目以降: 初回決済日の1ヶ月後に自動的に決済が行われます。</li>
+          </ul>
+        </section>
+
+        <section>
+          <h2 class="font-bold text-stone-400 text-xs mb-1">商品の引渡時期</h2>
+          <p>決済完了後、直ちにご利用いただけます。</p>
+        </section>
+
+        <section>
+          <h2 class="font-bold text-stone-400 text-xs mb-1">
+            返品・交換・キャンセルについて
+          </h2>
+          <ul class="list-disc list-inside pl-1 space-y-1">
+            <li>
+              返品・交換:
+              デジタルコンテンツの性質上、返品・交換はお受けできません。
+            </li>
+            <li>
+              解約:
+              設定画面の「サブスクリプション管理」より、いつでも解約手続きが可能です。解約手続き完了後、次回の請求日より課金が停止されます。日割り計算による返金は行われません。
+            </li>
+          </ul>
+        </section>
+
+        <section>
+          <h2 class="font-bold text-stone-400 text-xs mb-1">動作環境</h2>
+          <ul class="list-disc list-inside pl-1 space-y-1">
+            <li>iOS 15.0以降 (Safari最新版)</li>
+            <li>Android 10.0以降 (Chrome最新版)</li>
+            <li>推奨ブラウザ: Google Chrome, Safari</li>
+          </ul>
+        </section>
+      </div>
+    </div>
+  </div>
+</template>
+``` ### 修正後の手順 1. 上記のコードで `LegalView.vue` を上書きする。 2.
+`[ここに番地・建物名を記入]`
+の部分を、**Stripeに提出した身分証明書と一言一句同じ住所** に書き換える。 3.
+再度デプロイする。 ```bash npm run build firebase deploy
+</file>
+
+<file path="src/views/LoginView/LoginView.ts">
+import { ref } from "vue";
+import {
+  getAuth,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendEmailVerification,
+  signOut,
+} from "firebase/auth";
+import { getFirestore, doc, setDoc } from "firebase/firestore";
+import { useRouter } from "vue-router";
+
+export default function useLoginView() {
+  const router = useRouter();
+  const isLoginMode = ref(true);
+  const email = ref("");
+  const password = ref("");
+  const loading = ref(false);
+
+  const handleSubmit = async () => {
+    if (!email.value || !password.value) return alert("入力してください");
+    loading.value = true;
+    const auth = getAuth();
+    const db = getFirestore();
+
+    try {
+      if (isLoginMode.value) {
+        // --- ログイン ---
+        const userCredential = await signInWithEmailAndPassword(
+          auth,
+          email.value,
+          password.value
+        );
+        const user = userCredential.user;
+
+        if (!user.emailVerified) {
+          // 未認証なら待機画面へ
+          router.push("/verify-email");
+        } else {
+          router.push("/");
+        }
+      } else {
+        // --- 新規登録 ---
+        const userCredential = await createUserWithEmailAndPassword(
+          auth,
+          email.value,
+          password.value
+        );
+        const user = userCredential.user;
+
+        // ユーザー情報保存
+        await setDoc(doc(db, "users", user.uid), {
+          email: email.value,
+          role: "student",
+          createdAt: new Date(),
+        });
+
+        // ★メール送信
+        await sendEmailVerification(user);
+        alert(
+          "確認メールを送信しました。\nメール内のリンクをクリックしてください。"
+        );
+
+        // 待機画面へ
+        router.push("/verify-email");
+      }
+    } catch (e: any) {
+      console.error(e);
+      let msg = "エラーが発生しました";
+      if (e.code === "auth/email-already-in-use")
+        msg = "このメールアドレスは既に登録されています";
+      if (e.code === "auth/weak-password")
+        msg = "パスワードは6文字以上にしてください";
+      if (e.code === "auth/invalid-credential")
+        msg = "メールアドレスまたはパスワードが間違っています";
+      alert(msg);
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  return {
+    isLoginMode,
+    email,
+    password,
+    loading,
+    handleSubmit,
+  };
+}
+</file>
+
+<file path="src/views/TermsView/TermsView.vue">
+<script setup lang="ts">
+import { useRouter } from "vue-router";
+const router = useRouter();
+</script>
+
+<template>
+  <div class="min-h-screen bg-stone-50 p-6 text-stone-800 font-sans pb-24">
+    <div
+      class="max-w-3xl mx-auto bg-white p-8 rounded-3xl shadow-sm border border-stone-100"
+    >
+      <div class="flex items-center gap-4 mb-8">
+        <button
+          @click="router.back()"
+          class="w-10 h-10 rounded-full bg-stone-100 flex items-center justify-center hover:bg-stone-200 transition"
+        >
+          ←
+        </button>
+        <h1 class="text-xl font-bold">利用規約</h1>
+      </div>
+
+      <div class="space-y-6 text-sm leading-relaxed text-stone-600">
+        <section>
+          <h2 class="font-bold text-stone-800 mb-2">第1条（知的財産権）</h2>
+          <p>
+            本アプリ「HairLink」に含まれるすべてのコンテンツ（文章、画像、プログラムコード、デザイン、ロゴ等）の著作権、商標権、その他の知的財産権は、開発者（吉岡
+            拓海）に帰属します。利用者は、これらを無断で複製、転用、改変することはできません。
+          </p>
+        </section>
+
+        <section>
+          <h2 class="font-bold text-stone-800 mb-2">第2条（禁止事項）</h2>
+          <p>利用者は、以下の行為を行ってはなりません。</p>
+          <ul class="list-disc list-inside pl-2 space-y-1">
+            <li>
+              本アプリのソースコードを解析、リバースエンジニアリングする行為
+            </li>
+            <li>
+              本アプリと類似のサービスを作成するために、本アプリの仕様やデザインを模倣する行為
+            </li>
+            <li>
+              不正な手段でアクセスしたり、サーバーに過度な負荷をかける行為
+            </li>
+            <li>アカウントを第三者に譲渡または貸与する行為</li>
+          </ul>
+        </section>
+
+        <section>
+          <h2 class="font-bold text-stone-800 mb-2">第3条（免責事項）</h2>
+          <p>
+            本アプリの使用により生じた損害（データの消失、業務の停止など）について、運営者は一切の責任を負いません。本アプリは現状有姿で提供されるものとします。
+          </p>
+        </section>
+
+        <section>
+          <h2 class="font-bold text-stone-800 mb-2">
+            第4条（サービスの変更・停止）
+          </h2>
+          <p>
+            運営者は、事前の通知なく本アプリの機能を変更、または提供を停止することができるものとします。
+          </p>
+        </section>
+
+        <p class="mt-8 text-xs text-stone-400">2025年12月20日 制定</p>
+      </div>
+    </div>
+  </div>
+</template>
+</file>
+
+<file path="src/views/VerifyEmailView/VerifyEmailView.vue">
+<script setup lang="ts">
+import { ref } from "vue";
+import { getAuth, sendEmailVerification, signOut } from "firebase/auth";
+import { useRouter } from "vue-router";
+
+const auth = getAuth();
+const router = useRouter();
+const user = auth.currentUser;
+const loading = ref(false);
+const message = ref("");
+
+// 再送信処理
+const resendEmail = async () => {
+  if (!user) return;
+  loading.value = true;
+  try {
+    await sendEmailVerification(user);
+    message.value = "確認メールを再送信しました。";
+  } catch (e: any) {
+    if (e.code === "auth/too-many-requests") {
+      message.value = "少し時間を置いてから再試行してください。";
+    } else {
+      message.value = "送信に失敗しました。";
+    }
+  } finally {
+    loading.value = false;
+  }
+};
+
+// 「確認しました」ボタン（リロードして状態確認）
+const checkVerification = async () => {
+  if (!user) return;
+  loading.value = true;
+  try {
+    await user.reload(); // Firebaseの状態を最新に更新
+    if (user.emailVerified) {
+      alert("認証を確認しました！");
+      router.push("/");
+    } else {
+      alert(
+        "まだ認証が完了していません。\nメールのリンクをクリックしましたか？"
+      );
+    }
+  } catch (e) {
+    console.error(e);
+  } finally {
+    loading.value = false;
+  }
+};
+
+const handleLogout = async () => {
+  await signOut(auth);
+  router.push("/login");
+};
+</script>
+
+<template>
+  <div
+    class="min-h-screen bg-slate-50 flex items-center justify-center p-6 font-sans"
+  >
+    <div
+      class="max-w-md w-full bg-white rounded-3xl p-8 shadow-sm border border-slate-100 text-center"
+    >
+      <div
+        class="w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center text-3xl mx-auto mb-6"
+      >
+        ✉️
+      </div>
+
+      <h2 class="text-xl font-bold text-slate-800 mb-4">
+        メールアドレスの確認
+      </h2>
+
+      <p class="text-sm text-slate-600 mb-6 leading-relaxed">
+        <strong>{{ user?.email }}</strong> 宛に確認メールを送信しました。<br />
+        メール内のリンクをクリックして、アカウントを有効化してください。
+      </p>
+
+      <div class="space-y-3">
+        <button
+          @click="checkVerification"
+          :disabled="loading"
+          class="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition shadow-lg shadow-blue-200"
+        >
+          {{ loading ? "確認中..." : "認証完了 (アプリへ進む)" }}
+        </button>
+
+        <button
+          @click="resendEmail"
+          :disabled="loading"
+          class="w-full py-3 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 transition"
+        >
+          メールを再送信
+        </button>
+      </div>
+
+      <p
+        v-if="message"
+        class="mt-4 text-xs text-blue-600 font-bold animate-pulse"
+      >
+        {{ message }}
+      </p>
+
+      <div class="mt-8 pt-6 border-t border-slate-100">
+        <p class="text-xs text-slate-400 mb-2">メールが届かない場合</p>
+        <p class="text-[10px] text-slate-400">
+          ・迷惑メールフォルダをご確認ください<br />
+          ・メールアドレスが間違っている場合はログアウトしてやり直してください
+        </p>
+        <button
+          @click="handleLogout"
+          class="mt-4 text-xs text-slate-500 underline hover:text-slate-800"
+        >
+          ログアウト / アドレス変更
+        </button>
+      </div>
+    </div>
+  </div>
+</template>
+</file>
+
+<file path="src/env.d.ts">
+/// <reference types="vite/client" />
+
+declare module "*.vue" {
+  import type { DefineComponent } from "vue";
+  const component: DefineComponent<{}, {}, any>;
+  export default component;
+}
+</file>
+
+<file path="src/firebase.ts">
+import { initializeApp } from "firebase/app";
+import { getAuth } from "firebase/auth";
+import { getFirestore, enableIndexedDbPersistence } from "firebase/firestore";
+import { getStorage } from "firebase/storage";
+import { getMessaging } from "firebase/messaging"; // 追加
+
+const firebaseConfig = {
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
+};
+
+const app = initializeApp(firebaseConfig);
+export const auth = getAuth(app);
+export const db = getFirestore(app);
+export const storage = getStorage(app);
+export const messaging = getMessaging(app); // 追加
+
+enableIndexedDbPersistence(db).catch((err) => {
+  if (err.code == "failed-precondition") {
+    console.error("複数タブで開いているためオフライン機能が無効です");
+  } else if (err.code == "unimplemented") {
+    console.error("ブラウザが対応していません");
+  }
+});
+</file>
+
+<file path="src/main.ts">
+import { createApp } from "vue";
+import "./style.css";
+import App from "./App.vue";
+import router from "./router";
+
+const app = createApp(App);
+app.use(router);
+app.mount("#app");
+</file>
+
+<file path="src/style.css">
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* 影の質感をApple風に調整 */
+  --shadow-soft: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
+  --shadow-card: 0 10px 40px -10px rgba(0, 0, 0, 0.08);
+}
+
+body {
+  /* 真っ白(#ffffff)ではなく、目に優しいごく薄いグレー */
+  background-color: #f8fafc;
+  color: #1e293b;
+  /* iOSのような滑らかな文字レンダリング */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* 日本語フォントの最適化 */
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans",
+    Meiryo, sans-serif;
+}
+
+/* スクロールバーを隠してスタイリッシュに */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* グラスモーフィズム（すりガラス）効果 */
+.glass {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+/* 高級感のあるカード */
+.modern-card {
+  background: white;
+  border-radius: 24px;
+  box-shadow: var(--shadow-soft);
+  border: 1px solid rgba(241, 245, 249, 1);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.modern-card:active {
+  transform: scale(0.99);
+}
+
+/* アニメーション */
+@keyframes fadeInScale {
+  from {
+    opacity: 0;
+    transform: scale(0.98) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+.animate-enter {
+  animation: fadeInScale 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+</file>
+
+<file path=".gitignore">
+node_modules
+.DS_Store
+dist
+dist-ssr
+*.local
+.vscode/
+.env
+</file>
+
+<file path="firebase.json">
+{
+  "hosting": {
+    "public": "dist",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  },
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ],
+      "predeploy": ["npm --prefix \"$RESOURCE_DIR\" run build"]
+    }
+  ]
+}
+</file>
+
+<file path="postcss.config.js">
+export default {
+  plugins: {
+    tailwindcss: {},
+    autoprefixer: {},
+  },
+};
+</file>
+
+<file path="tailwind.config.js">
+/** @type {import('tailwindcss').Config} */
+export default {
+  content: ["./index.html", "./src/**/*.{vue,js,ts,jsx,tsx}"],
+  theme: {
+    extend: {},
+  },
+  plugins: [],
+};
+</file>
+
+<file path="tsconfig.json">
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "useDefineForClassFields": true,
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "jsx": "preserve",
+    "sourceMap": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "lib": ["ESNext", "DOM"],
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    },
+    "types": ["vite/client"]
+  },
+  "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.tsx", "src/**/*.vue"]
+}
+</file>
+
+<file path="functions/lib/index.js">
+"use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", { value: true });
+const v2_1 = require("firebase-functions/v2");
+const admin = __importStar(require("firebase-admin"));
+// Firebase Adminの初期化
+if (admin.apps.length === 0) {
+    admin.initializeApp();
+}
+// リージョン等の設定
+(0, v2_1.setGlobalOptions)({
+    region: "asia-northeast1",
+    memory: "1GiB",
+    maxInstances: 10,
+});
+// 現在、NextNsアプリではサーバーサイド(Cloud Functions)の処理は使用していないため
+// 定義を空にしています。将来的に通知機能などを追加する場合はここに記述します。
+</file>
+
+<file path="functions/index.ts">
+import { setGlobalOptions } from "firebase-functions/v2";
+import * as admin from "firebase-admin";
+
+// Firebase Adminの初期化
+if (admin.apps.length === 0) {
+  admin.initializeApp();
+}
+
+// リージョン等の設定
+setGlobalOptions({
+  region: "asia-northeast1",
+  memory: "1GiB",
+  maxInstances: 10,
+});
+
+// 現在、NextNsアプリではサーバーサイド(Cloud Functions)の処理は使用していないため
+// 定義を空にしています。将来的に通知機能などを追加する場合はここに記述します。
+</file>
+
+<file path="src/components/ReservationModal/ReservationModal.ts">
+import { ref, computed, watch } from "vue";
+import { useHairLink, type TimeSlot } from "@/composables/useNextNs";
+import type BaseModal from "@/uiParts/BaseModal/BaseModal.vue";
+import { getAuth } from "firebase/auth";
+
+export const MENU_OPTIONS = [
+  "カット",
+  "カラー",
+  "カット + カラー",
+  "パーマ",
+  "カット + パーマ",
+  "縮毛矯正",
+  "トリートメント",
+  "ヘッドスパ",
+  "カウンセリングのみ",
+  "その他",
+];
+
+export function useReservationModal(emit: (event: "saved") => void) {
+  const { fetchMyStylists, getAvailableSlots, makeReservation, myStylists } =
+    useHairLink();
+  const auth = getAuth();
+
+  const baseModalRef = ref<InstanceType<typeof BaseModal> | null>(null);
+  const loading = ref(false);
+
+  const step = ref(1);
+  const selectedStylistId = ref("");
+  const selectedDate = ref("");
+  const selectedTime = ref("");
+  const selectedMenu = ref(MENU_OPTIONS[2]);
+  const availableSlots = ref<TimeSlot[]>([]);
+
+  // ★追加: 美容師が顧客の予約を入れるための情報
+  const targetCustomer = ref<{ uid: string; name: string } | null>(null);
+
+  const minDate = computed(() => new Date().toISOString().slice(0, 10));
+
+  watch([selectedStylistId, selectedDate], async ([newStylistId, newDate]) => {
+    if (!newStylistId || !newDate) {
+      availableSlots.value = [];
+      return;
+    }
+
+    selectedTime.value = "";
+    availableSlots.value = [];
+
+    loading.value = true;
+    try {
+      const slots = await getAvailableSlots(newStylistId, newDate);
+
+      if (slots.length === 0) {
+        console.warn(
+          "予約枠データの取得に失敗したか、枠がありません。デフォルト枠を表示します。"
+        );
+        for (let i = 10; i < 22; i++) {
+          slots.push({ time: `${i}:00`, isAvailable: true });
+          slots.push({ time: `${i}:30`, isAvailable: true });
+        }
+      }
+      availableSlots.value = slots;
+    } catch (e) {
+      console.error("時間枠取得エラー", e);
+      const fallbackSlots = [];
+      for (let i = 10; i < 22; i++) {
+        fallbackSlots.push({ time: `${i}:00`, isAvailable: true });
+        fallbackSlots.push({ time: `${i}:30`, isAvailable: true });
+      }
+      availableSlots.value = fallbackSlots;
+    } finally {
+      loading.value = false;
+    }
+  });
+
+  // ★修正: show関数に引数を追加して、美容師による代理予約に対応
+  const show = async (options?: {
+    isProxy?: boolean;
+    stylistId?: string;
+    customer?: { uid: string; name: string };
+  }) => {
+    // 初期化
+    step.value = 1;
+    selectedStylistId.value = "";
+    selectedDate.value = minDate.value;
+    selectedTime.value = "";
+    availableSlots.value = [];
+    loading.value = false;
+    targetCustomer.value = null; // リセット
+
+    baseModalRef.value?.show();
+
+    // ★美容師による代理予約モード
+    if (options?.isProxy && options.stylistId && options.customer) {
+      targetCustomer.value = options.customer;
+      selectedStylistId.value = options.stylistId; // 自分自身をセット
+      step.value = 2; // 美容師選択をスキップして日時選択へ
+      return;
+    }
+
+    // 通常モード（顧客が予約）
+    loading.value = true;
+    try {
+      await fetchMyStylists();
+    } finally {
+      loading.value = false;
+    }
+
+    if (myStylists.value.length === 0) {
+      step.value = 0;
+    } else if (myStylists.value.length === 1) {
+      selectedStylistId.value = myStylists.value[0].id;
+      step.value = 2;
+    }
+  };
+
+  const close = () => {
+    baseModalRef.value?.close();
+  };
+
+  const selectTime = (time: string) => {
+    selectedTime.value = time;
+  };
+
+  const nextStep = () => {
+    if (step.value === 2 && !selectedTime.value)
+      return alert("時間を選択してください");
+    step.value++;
+  };
+
+  const prevStep = () => {
+    step.value--;
+  };
+
+  const submitReservation = async () => {
+    loading.value = true;
+    try {
+      if (!selectedStylistId.value)
+        throw new Error("美容師IDが設定されていません");
+
+      // ★修正: ターゲット顧客情報を渡す
+      await makeReservation(
+        {
+          stylistId: selectedStylistId.value,
+          date: selectedDate.value,
+          time: selectedTime.value,
+          menu: selectedMenu.value,
+        },
+        targetCustomer.value || undefined
+      );
+
+      alert("予約が完了しました！");
+      emit("saved");
+      close();
+    } catch (e: any) {
+      console.error("予約エラー:", e);
+      alert(`予約に失敗しました。\n${e.message}`);
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  return {
+    baseModalRef,
+    step,
+    loading,
+    myStylists,
+    selectedStylistId,
+    selectedDate,
+    selectedTime,
+    selectedMenu,
+    availableSlots,
+    minDate,
+    show,
+    close,
+    selectTime,
+    nextStep,
+    prevStep,
+    submitReservation,
+    MENU_OPTIONS,
+    targetCustomer, // UI表示用に追加
+  };
+}
+</file>
+
+<file path="src/components/SettingsTab/SettingsTab.vue">
+<script setup lang="ts">
+import { ref, watch } from "vue";
+import { getAuth, updateProfile } from "firebase/auth";
+import BaseInput from "@/uiParts/BaseInput/BaseInput.vue";
+import type { User } from "@/types";
+
+// Props定義から THEMES, currentTheme を削除しました
+const props = defineProps<{
+  currentUser: User | null;
+}>();
+
+const emit = defineEmits(["saved"]);
+
+const editName = ref("");
+const isSaving = ref(false);
+
+// 初期値をセット
+watch(
+  () => props.currentUser,
+  (newVal) => {
+    if (newVal) {
+      editName.value = newVal.displayName || "";
+    }
+  },
+  { immediate: true }
+);
+
+const handleSave = async () => {
+  const auth = getAuth();
+  if (!auth.currentUser) return;
+
+  isSaving.value = true;
+  try {
+    // Firebase Authのプロフィール更新
+    await updateProfile(auth.currentUser, {
+      displayName: editName.value,
+    });
+    alert("プロフィールを更新しました✨");
+    emit("saved");
+  } catch (e) {
+    console.error(e);
+    alert("保存に失敗しました");
+  } finally {
+    isSaving.value = false;
+  }
+};
+</script>
+
+<template>
+  <div class="pb-24 space-y-6 animate-fade-in">
+    <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+      <h3 class="font-bold text-slate-800 text-lg mb-6">アカウント設定</h3>
+
+      <div class="mb-6">
+        <label
+          class="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-wider"
+          >お名前</label
+        >
+        <BaseInput v-model="editName" placeholder="表示名を入力" />
+      </div>
+
+      <button
+        @click="handleSave"
+        :disabled="isSaving"
+        class="w-full py-4 bg-slate-900 text-white font-bold rounded-xl hover:bg-slate-800 transition shadow-lg active:scale-95 disabled:opacity-50"
+      >
+        {{ isSaving ? "保存中..." : "変更を保存" }}
+      </button>
+    </div>
+
+    <div class="text-center">
+      <p class="text-xs text-slate-400">NextNs v1.0.0</p>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+</style>
+</file>
+
+<file path="src/components/TheBottomNav/TheBottomNav.vue">
+<script setup lang="ts">
+import { useRouter } from "vue-router";
+
+defineProps<{
+  currentTab: string;
+}>();
+
+defineEmits(["update:currentTab"]);
+const router = useRouter();
+
+const btnClass =
+  "flex flex-col items-center justify-center w-14 h-full relative transition-all duration-200 active:scale-90";
+const activeClass = "text-blue-600 scale-105";
+const inactiveClass = "text-slate-400 hover:text-slate-600";
+</script>
+
+<template>
+  <nav
+    class="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-sm h-16 bg-white/90 backdrop-blur-xl border border-white/40 shadow-2xl shadow-slate-200/50 rounded-full flex items-center justify-evenly z-50 px-2"
+  >
+    <button
+      @click="$emit('update:currentTab', 'home')"
+      :class="[btnClass, currentTab === 'home' ? activeClass : inactiveClass]"
+    >
+      <span class="text-xl mb-0.5">🏠</span>
+      <span class="text-[9px] font-bold tracking-wide">ホーム</span>
+      <span
+        v-if="currentTab === 'home'"
+        class="absolute -bottom-1 w-1 h-1 bg-blue-600 rounded-full"
+      ></span>
+    </button>
+
+    <button
+      @click="$emit('update:currentTab', 'history')"
+      :class="[
+        btnClass,
+        currentTab === 'history' ? activeClass : inactiveClass,
+      ]"
+    >
+      <span class="text-xl mb-0.5">📖</span>
+      <span class="text-[9px] font-bold tracking-wide">履歴</span>
+      <span
+        v-if="currentTab === 'history'"
+        class="absolute -bottom-1 w-1 h-1 bg-blue-600 rounded-full"
+      ></span>
+    </button>
+
+    <button
+      @click="$emit('update:currentTab', 'settings')"
+      :class="[
+        btnClass,
+        currentTab === 'settings' ? activeClass : inactiveClass,
+      ]"
+    >
+      <span class="text-xl mb-0.5">⚙️</span>
+      <span class="text-[9px] font-bold tracking-wide">設定</span>
+      <span
+        v-if="currentTab === 'settings'"
+        class="absolute -bottom-1 w-1 h-1 bg-blue-600 rounded-full"
+      ></span>
+    </button>
+  </nav>
+</template>
+</file>
+
+<file path="src/router/index.ts">
+import { createRouter, createWebHistory } from "vue-router";
+import { getAuth, onAuthStateChanged, User } from "firebase/auth";
+import HomeView from "../views/HomeView/HomeView.vue";
+import LoginView from "../views/LoginView/LoginView.vue";
+import VerifyEmailView from "../views/VerifyEmailView/VerifyEmailView.vue"; // ★新規作成予定
+
+const router = createRouter({
+  history: createWebHistory(import.meta.env.BASE_URL),
+  routes: [
+    {
+      path: "/",
+      name: "home",
+      component: HomeView,
+      meta: { requiresAuth: true },
+    },
+    {
+      path: "/login",
+      name: "login",
+      component: LoginView,
+      meta: { public: true },
+    },
+    // ★追加: メール確認待機画面
+    {
+      path: "/verify-email",
+      name: "verify-email",
+      component: VerifyEmailView,
+      meta: { requiresAuth: true }, // ログインはしている状態なのでtrue
+    },
+  ],
+});
+
+router.beforeEach(async (to, from, next) => {
+  const auth = getAuth();
+  const currentUser = await new Promise<User | null>((resolve) => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      unsubscribe();
+      resolve(user);
+    });
+  });
+
+  const requiresAuth = to.matched.some((record) => record.meta.requiresAuth);
+
+  if (requiresAuth && !currentUser) {
+    // 未ログインならログイン画面へ
+    next("/login");
+  } else if (
+    currentUser &&
+    !currentUser.emailVerified &&
+    to.name !== "verify-email"
+  ) {
+    // ★追加: ログインしてるけど「メール未認証」なら待機画面へ強制移動
+    next("/verify-email");
+  } else if (
+    currentUser &&
+    currentUser.emailVerified &&
+    to.name === "verify-email"
+  ) {
+    // ★追加: 認証済みなら待機画面には入れない（ホームへ）
+    next("/");
+  } else if (to.path === "/login" && currentUser && currentUser.emailVerified) {
+    // ログイン済み＆認証済みならホームへ
+    next("/");
+  } else {
+    next();
+  }
+});
+
+export default router;
+</file>
+
+<file path="src/types/index.ts">
+/**
+ * NextNs (NurseCode) Type Definitions
+ */
+
+// 1. ユーザー情報
+export type User = {
+  uid: string;
+  email: string;
+  displayName?: string;
+  photoURL?: string;
+  role: "student" | "admin";
+  createdAt: any;
+};
+
+// 2. ユーザーの学習成績
+export type UserProfile = {
+  uid: string;
+  targetExam: string;
+  stats: {
+    totalAnswered: number;
+    totalCorrect: number;
+    tagAccuracy: { [key: string]: number };
+  };
+};
+
+// 3. 問題データ
+export type Question = {
+  id: string;
+  examYear: string;
+  questionNumber: string;
+  type: "mandatory" | "general" | "situation";
+  text: string;
+  imageUrl?: string;
+  choices: string[];
+  correctIndices: number[];
+  explanation: string;
+  tags: string[];
+
+  // ★追加: 復習モード用（前回の結果を一時的に持たせる）
+  lastResult?: {
+    isCorrect: boolean;
+    confidence?: "ok" | "so-so" | "ng";
+    userChoice?: number[];
+  };
+};
+
+// 4. 学習履歴 (ログ)
+export type StudyLog = {
+  id: string;
+  userId: string;
+  questionId: string;
+  question: Question;
+
+  userChoice: number[];
+  isCorrect: boolean;
+  timeTaken: number;
+
+  createdAt: any;
+
+  // 自信度
+  confidence?: "ok" | "so-so" | "ng";
+
+  aiChat?: {
+    userQuestion: string;
+    aiAnswer: string;
+  }[];
+};
 </file>
 
 <file path="src/views/HomeView/HomeView.ts">
@@ -5118,11 +5020,11 @@ import type { Question } from "@/types";
 
 const {
   questions,
-  reviewQuestions, // ★変更
+  reviewQuestions,
   bookmarkedQuestions,
   loading,
   fetchQuestions,
-  fetchReviewQuestions, // ★変更
+  fetchReviewQuestions,
   fetchBookmarks,
   currentUser,
   logout,
@@ -5130,11 +5032,17 @@ const {
   todayLogCount,
   availableTags,
   currentLevel,
+  selectedPeriod,
+  clearSession,
+  currentSessionIndex,
 } = useNextNs();
 
 const currentTab = ref("home");
 const studyMode = ref<"daily" | "review" | "bookmark">("daily");
 const selectedTag = ref<string | null>(null);
+
+// ★追加: 復習モード用の絞り込みフィルター
+const reviewFilter = ref<"all" | "incorrect" | "ng" | "so-so">("all");
 
 onMounted(() => {
   fetchQuestions();
@@ -5142,12 +5050,12 @@ onMounted(() => {
 
 watch(studyMode, (newMode) => {
   if (newMode === "daily") fetchQuestions();
-  if (newMode === "review") fetchReviewQuestions(); // ★変更
+  if (newMode === "review") fetchReviewQuestions();
   if (newMode === "bookmark") fetchBookmarks();
   selectedTag.value = null;
+  reviewFilter.value = "all"; // モード変更時にフィルターリセット
 });
 
-// ★自信度を受け取るように変更
 const onAnswer = async (
   question: Question,
   isCorrect: boolean,
@@ -5157,6 +5065,13 @@ const onAnswer = async (
   await saveAnswer(question, choiceIndex, isCorrect, confidence);
 };
 
+const handleReset = () => {
+  if (confirm("現在の進行状況をリセットして、新しい問題をロードしますか？")) {
+    clearSession();
+    fetchQuestions(true);
+  }
+};
+
 const dailyGoal = 10;
 const progressPercent = computed(() =>
   Math.min((todayLogCount.value / dailyGoal) * 100, 100)
@@ -5164,20 +5079,39 @@ const progressPercent = computed(() =>
 
 const displayQuestions = computed(() => {
   let list: Question[] = [];
-  if (studyMode.value === "daily") list = questions.value;
-  else if (studyMode.value === "review") list = reviewQuestions.value; // ★変更
-  else if (studyMode.value === "bookmark") list = bookmarkedQuestions.value;
 
+  if (studyMode.value === "daily") {
+    list = questions.value;
+  } else if (studyMode.value === "review") {
+    list = reviewQuestions.value;
+
+    // ★復習モードの絞り込みロジック
+    if (reviewFilter.value === "incorrect") {
+      // 不正解だったもの
+      list = list.filter((q) => q.lastResult && !q.lastResult.isCorrect);
+    } else if (reviewFilter.value === "ng") {
+      // 自信なし(❌)としたもの
+      list = list.filter((q) => q.lastResult?.confidence === "ng");
+    } else if (reviewFilter.value === "so-so") {
+      // あやふや(🔺)としたもの
+      list = list.filter((q) => q.lastResult?.confidence === "so-so");
+    }
+  } else if (studyMode.value === "bookmark") {
+    list = bookmarkedQuestions.value;
+  }
+
+  // タグフィルター（全モード共通）
   if (selectedTag.value) {
     list = list.filter((q) => q.tags.includes(selectedTag.value!));
   }
+
   return list;
 });
 
 const modeTitle = computed(() => {
-  if (studyMode.value === "daily") return "ランダム出題";
-  if (studyMode.value === "review") return "復習モード"; // ★変更
-  return "保存した問題";
+  if (studyMode.value === "daily") return "演習";
+  if (studyMode.value === "review") return "復習";
+  return "保存";
 });
 </script>
 
@@ -5248,6 +5182,102 @@ const modeTitle = computed(() => {
           </button>
         </div>
 
+        <div
+          v-if="studyMode === 'daily'"
+          class="flex justify-between items-center mb-4"
+        >
+          <div class="flex gap-2">
+            <button
+              @click="selectedPeriod = 'all'"
+              class="px-3 py-1 rounded-full text-xs font-bold border transition"
+              :class="
+                selectedPeriod === 'all'
+                  ? 'bg-slate-800 text-white'
+                  : 'bg-white text-slate-500'
+              "
+            >
+              すべて
+            </button>
+            <button
+              @click="selectedPeriod = 'am'"
+              class="px-3 py-1 rounded-full text-xs font-bold border transition"
+              :class="
+                selectedPeriod === 'am'
+                  ? 'bg-slate-800 text-white'
+                  : 'bg-white text-slate-500'
+              "
+            >
+              午前
+            </button>
+            <button
+              @click="selectedPeriod = 'pm'"
+              class="px-3 py-1 rounded-full text-xs font-bold border transition"
+              :class="
+                selectedPeriod === 'pm'
+                  ? 'bg-slate-800 text-white'
+                  : 'bg-white text-slate-500'
+              "
+            >
+              午後
+            </button>
+          </div>
+          <button
+            @click="handleReset"
+            class="text-[10px] text-red-400 underline"
+          >
+            進行リセット
+          </button>
+        </div>
+
+        <div v-if="studyMode === 'review'" class="mb-4">
+          <div class="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
+            <button
+              @click="reviewFilter = 'all'"
+              class="px-3 py-1.5 rounded-lg text-xs font-bold border transition whitespace-nowrap"
+              :class="
+                reviewFilter === 'all'
+                  ? 'bg-orange-500 text-white border-orange-500'
+                  : 'bg-white text-slate-500'
+              "
+            >
+              すべて
+            </button>
+            <button
+              @click="reviewFilter = 'incorrect'"
+              class="px-3 py-1.5 rounded-lg text-xs font-bold border transition whitespace-nowrap"
+              :class="
+                reviewFilter === 'incorrect'
+                  ? 'bg-slate-700 text-white border-slate-700'
+                  : 'bg-white text-slate-500'
+              "
+            >
+              不正解のみ
+            </button>
+            <button
+              @click="reviewFilter = 'ng'"
+              class="px-3 py-1.5 rounded-lg text-xs font-bold border transition whitespace-nowrap"
+              :class="
+                reviewFilter === 'ng'
+                  ? 'bg-red-500 text-white border-red-500'
+                  : 'bg-white text-slate-500'
+              "
+            >
+              ❌ 自信なし
+            </button>
+            <button
+              @click="reviewFilter = 'so-so'"
+              class="px-3 py-1.5 rounded-lg text-xs font-bold border transition whitespace-nowrap"
+              :class="
+                reviewFilter === 'so-so'
+                  ? 'bg-yellow-500 text-white border-yellow-500'
+                  : 'bg-white text-slate-500'
+              "
+            >
+              🔺 あやふや
+            </button>
+          </div>
+        </div>
+
         <div class="flex gap-2 overflow-x-auto pb-4 no-scrollbar mb-2">
           <button
             @click="selectedTag = null"
@@ -5282,11 +5312,7 @@ const modeTitle = computed(() => {
           <div
             class="animate-spin w-10 h-10 border-4 border-t-transparent rounded-full mb-4"
             :class="
-              studyMode === 'review'
-                ? 'border-orange-500'
-                : studyMode === 'bookmark'
-                ? 'border-teal-500'
-                : 'border-blue-600'
+              studyMode === 'review' ? 'border-orange-500' : 'border-blue-600'
             "
           ></div>
           <p class="text-xs font-bold text-slate-400 animate-pulse">
@@ -5321,49 +5347,57 @@ const modeTitle = computed(() => {
               <span v-else>{{ modeTitle }}</span>
             </h2>
             <span
-              class="text-xs font-bold px-3 py-1 rounded-full border shadow-sm"
-              :class="
-                studyMode === 'review'
-                  ? 'text-orange-500 bg-orange-50 border-orange-100'
-                  : studyMode === 'bookmark'
-                  ? 'text-teal-600 bg-teal-50 border-teal-100'
-                  : 'text-slate-400 bg-white border-slate-100'
-              "
+              class="text-xs font-bold px-3 py-1 rounded-full border shadow-sm bg-white text-slate-500"
             >
-              {{ displayQuestions.length }}問
+              残り {{ displayQuestions.length }}問
             </span>
           </div>
 
           <div v-if="displayQuestions.length > 0">
-            <QuizCard
-              v-for="(q, index) in displayQuestions"
-              :key="q.id"
-              :question="q"
-              :index="index"
-              @answer="
-                (isCorrect, idx, confidence) =>
-                  onAnswer(q, isCorrect, idx, confidence)
-              "
-            />
+            <template v-if="studyMode === 'daily'">
+              <QuizCard
+                v-if="displayQuestions[0]"
+                :key="displayQuestions[0].id"
+                :question="displayQuestions[0]"
+                :index="currentSessionIndex"
+                @answer="
+                  (isCorrect, idx, confidence) =>
+                    onAnswer(displayQuestions[0], isCorrect, idx, confidence)
+                "
+              />
+            </template>
+            <template v-else>
+              <QuizCard
+                v-for="(q, index) in displayQuestions"
+                :key="q.id"
+                :question="q"
+                :index="index"
+                @answer="
+                  (isCorrect, idx, confidence) =>
+                    onAnswer(q, isCorrect, idx, confidence)
+                "
+              />
+            </template>
           </div>
 
           <div v-else class="text-center py-20 text-slate-400">
             <template v-if="studyMode === 'review'">
               <p class="text-4xl mb-4">🎉</p>
               <p class="font-bold">素晴らしい！</p>
-              <p class="text-xs mt-2">復習が必要な問題はありません</p>
-            </template>
-            <template v-else-if="studyMode === 'bookmark'">
-              <p class="text-4xl mb-4">📑</p>
-              <p class="font-bold">保存された問題はありません</p>
               <p class="text-xs mt-2">
-                気になる問題の右上のボタンを押すと<br />ここに保存されます
+                復習が必要な問題はありません<br />（または条件に合う問題がありません）
+              </p>
+            </template>
+            <template v-else-if="studyMode === 'daily'">
+              <p class="text-4xl mb-4">🎉</p>
+              <p class="font-bold">問題はありません</p>
+              <p class="text-xs mt-2">
+                すべての問題を解き終えました！<br />リセットして再挑戦できます。
               </p>
             </template>
             <template v-else>
               <p class="text-4xl mb-4">📭</p>
               <p class="font-bold">問題が見つかりません</p>
-              <p class="text-xs mt-2">データ投入を行ってください</p>
             </template>
           </div>
         </div>
@@ -5396,245 +5430,6 @@ const modeTitle = computed(() => {
   scrollbar-width: none;
 }
 </style>
-</file>
-
-<file path="src/views/LegalView/LegalView.vue">
-<script setup lang="ts">
-import { useRouter } from "vue-router";
-
-const router = useRouter();
-</script>
-
-<template>
-  <div class="min-h-screen bg-stone-50 p-6 text-stone-800 font-sans pb-20">
-    <div
-      class="max-w-md mx-auto bg-white p-8 rounded-3xl shadow-sm border border-stone-100"
-    >
-      <!-- ヘッダー & 戻るボタン -->
-      <div class="flex items-center gap-4 mb-8">
-        <button
-          @click="router.back()"
-          class="w-10 h-10 rounded-full bg-stone-100 flex items-center justify-center hover:bg-stone-200 transition"
-        >
-          ←
-        </button>
-        <h1 class="text-lg font-bold">特定商取引法に基づく表記</h1>
-      </div>
-
-      <div class="space-y-8 text-sm leading-relaxed">
-        <section>
-          <h2 class="font-bold text-stone-400 text-xs mb-1">販売業者</h2>
-          <p>吉岡 拓海</p>
-        </section>
-
-        <section>
-          <h2 class="font-bold text-stone-400 text-xs mb-1">代表責任者</h2>
-          <p>吉岡 拓海</p>
-        </section>
-
-        <section>
-          <h2 class="font-bold text-stone-400 text-xs mb-1">所在地</h2>
-          <!-- ★重要: 免許証等の記載通り、番地・建物名・部屋番号まで正確に記載してください -->
-          <p>
-            〒815-0041<br />福岡県福岡市南区野間1丁目 19-1 Cherim高宮Ⅱwest 201
-          </p>
-        </section>
-
-        <section>
-          <h2 class="font-bold text-stone-400 text-xs mb-1">電話番号</h2>
-          <p>080-6423-6435</p>
-        </section>
-
-        <section>
-          <h2 class="font-bold text-stone-400 text-xs mb-1">メールアドレス</h2>
-          <p>gongedonghuam@gmail.com</p>
-        </section>
-
-        <section>
-          <h2 class="font-bold text-stone-400 text-xs mb-1">販売価格</h2>
-          <p>
-            各プランの申し込みページに表示された金額（表示価格/消費税込）とします。
-          </p>
-        </section>
-
-        <section>
-          <h2 class="font-bold text-stone-400 text-xs mb-1">
-            商品代金以外の必要料金
-          </h2>
-          <p>
-            なし（インターネット接続料金その他の電気通信回線の通信に関する費用はお客様の負担となります）
-          </p>
-        </section>
-
-        <section>
-          <h2 class="font-bold text-stone-400 text-xs mb-1">支払方法</h2>
-          <p>クレジットカード決済（Stripe）</p>
-        </section>
-
-        <section>
-          <h2 class="font-bold text-stone-400 text-xs mb-1">支払時期</h2>
-          <ul class="list-disc list-inside pl-1 space-y-1">
-            <li>初回: 申し込み完了時にお支払いが確定します。</li>
-            <li>2回目以降: 初回決済日の1ヶ月後に自動的に決済が行われます。</li>
-          </ul>
-        </section>
-
-        <section>
-          <h2 class="font-bold text-stone-400 text-xs mb-1">商品の引渡時期</h2>
-          <p>決済完了後、直ちにご利用いただけます。</p>
-        </section>
-
-        <section>
-          <h2 class="font-bold text-stone-400 text-xs mb-1">
-            返品・交換・キャンセルについて
-          </h2>
-          <ul class="list-disc list-inside pl-1 space-y-1">
-            <li>
-              返品・交換:
-              デジタルコンテンツの性質上、返品・交換はお受けできません。
-            </li>
-            <li>
-              解約:
-              設定画面の「サブスクリプション管理」より、いつでも解約手続きが可能です。解約手続き完了後、次回の請求日より課金が停止されます。日割り計算による返金は行われません。
-            </li>
-          </ul>
-        </section>
-
-        <section>
-          <h2 class="font-bold text-stone-400 text-xs mb-1">動作環境</h2>
-          <ul class="list-disc list-inside pl-1 space-y-1">
-            <li>iOS 15.0以降 (Safari最新版)</li>
-            <li>Android 10.0以降 (Chrome最新版)</li>
-            <li>推奨ブラウザ: Google Chrome, Safari</li>
-          </ul>
-        </section>
-      </div>
-    </div>
-  </div>
-</template>
-``` ### 修正後の手順 1. 上記のコードで `LegalView.vue` を上書きする。 2.
-`[ここに番地・建物名を記入]`
-の部分を、**Stripeに提出した身分証明書と一言一句同じ住所** に書き換える。 3.
-再度デプロイする。 ```bash npm run build firebase deploy
-</file>
-
-<file path="src/views/LoginView/LoginView.ts">
-import { ref } from "vue";
-import {
-  getAuth,
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  setPersistence,
-  browserLocalPersistence, // ★ここを変更 (Session -> Local)
-  sendEmailVerification,
-} from "firebase/auth";
-import { getFirestore, doc, setDoc } from "firebase/firestore";
-import { useRouter } from "vue-router"; // Routerを使うために追加
-
-export default function useLoginView() {
-  // 状態管理
-  const isLoginMode = ref(true); // true: ログイン, false: 新規登録
-  // ★役割の選択肢を削除し、デフォルトをcustomerに固定
-  const role = ref<"stylist" | "customer">("customer");
-  const name = ref("");
-  const email = ref("");
-  const password = ref("");
-  const loading = ref(false);
-
-  // setup内でrouterを取得する必要があるため、この関数をコンポーネント内で呼ぶ前提に変更
-  const router = useRouter();
-
-  // 処理実行
-  const handleSubmit = async () => {
-    if (!email.value || !password.value) {
-      alert("メールアドレスとパスワードを入力してください");
-      return;
-    }
-
-    loading.value = true;
-    const auth = getAuth();
-    const db = getFirestore();
-
-    try {
-      // ★ここを変更: browserLocalPersistence (永続化) にする
-      await setPersistence(auth, browserLocalPersistence);
-
-      if (isLoginMode.value) {
-        // --- ログイン処理 ---
-        const userCredential = await signInWithEmailAndPassword(
-          auth,
-          email.value,
-          password.value
-        );
-
-        // ログイン成功後は自動的にルーターが画面遷移（App.vue等の監視により）
-        // 明示的に遷移させる場合:
-        if (!userCredential.user.emailVerified) {
-          // router.push("/verify-email"); // コンポーネント側で制御しているのでここではAuth状態変更だけでOK
-        }
-      } else {
-        // --- 新規登録処理 ---
-        if (!name.value) {
-          alert("お名前を入力してください");
-          loading.value = false;
-          return;
-        }
-
-        const userCredential = await createUserWithEmailAndPassword(
-          auth,
-          email.value,
-          password.value
-        );
-        const user = userCredential.user;
-
-        // Firestoreにユーザー情報を保存
-        await setDoc(doc(db, "users", user.uid), {
-          name: name.value,
-          role: "customer", // ★強制的に 'customer' で登録
-          email: email.value,
-          createdAt: new Date(),
-        });
-
-        // メール確認送信
-        await sendEmailVerification(user);
-      }
-    } catch (e: any) {
-      console.error(e);
-      let message = "エラーが発生しました";
-      if (e.code === "auth/invalid-email")
-        message = "メールアドレスの形式が正しくありません";
-      if (
-        e.code === "auth/user-not-found" ||
-        e.code === "auth/invalid-credential"
-      )
-        message = "メールアドレスまたはパスワードが間違っています";
-      if (e.code === "auth/wrong-password")
-        message = "パスワードが間違っています";
-      if (e.code === "auth/email-already-in-use")
-        message = "このメールアドレスは既に使用されています";
-      if (e.code === "auth/weak-password")
-        message = "パスワードは6文字以上で設定してください";
-      alert(message);
-    } finally {
-      loading.value = false;
-    }
-  };
-
-  const toggleMode = () => {
-    isLoginMode.value = !isLoginMode.value;
-  };
-
-  return {
-    isLoginMode,
-    role,
-    name,
-    email,
-    password,
-    loading,
-    handleSubmit,
-    toggleMode,
-  };
-}
 </file>
 
 <file path="src/views/LoginView/LoginView.vue">
@@ -5748,193 +5543,6 @@ const handleSubmit = async () => {
 </template>
 </file>
 
-<file path="src/views/TermsView/TermsView.vue">
-<script setup lang="ts">
-import { useRouter } from "vue-router";
-const router = useRouter();
-</script>
-
-<template>
-  <div class="min-h-screen bg-stone-50 p-6 text-stone-800 font-sans pb-24">
-    <div
-      class="max-w-3xl mx-auto bg-white p-8 rounded-3xl shadow-sm border border-stone-100"
-    >
-      <div class="flex items-center gap-4 mb-8">
-        <button
-          @click="router.back()"
-          class="w-10 h-10 rounded-full bg-stone-100 flex items-center justify-center hover:bg-stone-200 transition"
-        >
-          ←
-        </button>
-        <h1 class="text-xl font-bold">利用規約</h1>
-      </div>
-
-      <div class="space-y-6 text-sm leading-relaxed text-stone-600">
-        <section>
-          <h2 class="font-bold text-stone-800 mb-2">第1条（知的財産権）</h2>
-          <p>
-            本アプリ「HairLink」に含まれるすべてのコンテンツ（文章、画像、プログラムコード、デザイン、ロゴ等）の著作権、商標権、その他の知的財産権は、開発者（吉岡
-            拓海）に帰属します。利用者は、これらを無断で複製、転用、改変することはできません。
-          </p>
-        </section>
-
-        <section>
-          <h2 class="font-bold text-stone-800 mb-2">第2条（禁止事項）</h2>
-          <p>利用者は、以下の行為を行ってはなりません。</p>
-          <ul class="list-disc list-inside pl-2 space-y-1">
-            <li>
-              本アプリのソースコードを解析、リバースエンジニアリングする行為
-            </li>
-            <li>
-              本アプリと類似のサービスを作成するために、本アプリの仕様やデザインを模倣する行為
-            </li>
-            <li>
-              不正な手段でアクセスしたり、サーバーに過度な負荷をかける行為
-            </li>
-            <li>アカウントを第三者に譲渡または貸与する行為</li>
-          </ul>
-        </section>
-
-        <section>
-          <h2 class="font-bold text-stone-800 mb-2">第3条（免責事項）</h2>
-          <p>
-            本アプリの使用により生じた損害（データの消失、業務の停止など）について、運営者は一切の責任を負いません。本アプリは現状有姿で提供されるものとします。
-          </p>
-        </section>
-
-        <section>
-          <h2 class="font-bold text-stone-800 mb-2">
-            第4条（サービスの変更・停止）
-          </h2>
-          <p>
-            運営者は、事前の通知なく本アプリの機能を変更、または提供を停止することができるものとします。
-          </p>
-        </section>
-
-        <p class="mt-8 text-xs text-stone-400">2025年12月20日 制定</p>
-      </div>
-    </div>
-  </div>
-</template>
-</file>
-
-<file path="src/views/VerifyEmailView/VerifyEmailView.vue">
-<script setup lang="ts">
-import { ref } from "vue";
-import { getAuth, sendEmailVerification, signOut } from "firebase/auth";
-import { useRouter } from "vue-router";
-
-const auth = getAuth();
-const router = useRouter();
-const user = auth.currentUser;
-const loading = ref(false);
-const message = ref("");
-
-// 再送信処理
-const resendEmail = async () => {
-  if (!user) return;
-  loading.value = true;
-  try {
-    await sendEmailVerification(user);
-    message.value = "確認メールを再送信しました。";
-  } catch (e: any) {
-    if (e.code === "auth/too-many-requests") {
-      message.value = "少し時間を置いてから再試行してください。";
-    } else {
-      message.value = "送信に失敗しました。";
-    }
-  } finally {
-    loading.value = false;
-  }
-};
-
-// 「確認しました」ボタン
-const checkVerification = async () => {
-  if (!user) return;
-  loading.value = true;
-  try {
-    await user.reload(); // Firebaseの状態を最新に更新
-    if (user.emailVerified) {
-      alert("認証を確認しました！");
-      router.push("/app");
-    } else {
-      alert(
-        "まだ認証が完了していません。\nメールのリンクをクリックしましたか？"
-      );
-    }
-  } catch (e) {
-    console.error(e);
-  } finally {
-    loading.value = false;
-  }
-};
-
-const handleLogout = async () => {
-  await signOut(auth);
-  router.push("/login");
-};
-</script>
-
-<template>
-  <div class="min-h-screen bg-stone-50 flex items-center justify-center p-6">
-    <div
-      class="max-w-md w-full bg-white rounded-3xl p-8 shadow-sm border border-stone-100 text-center"
-    >
-      <div
-        class="w-16 h-16 bg-teal-100 text-teal-600 rounded-full flex items-center justify-center text-3xl mx-auto mb-6"
-      >
-        ✉️
-      </div>
-
-      <h2 class="text-xl font-bold text-stone-800 mb-4">
-        メールアドレスの確認
-      </h2>
-
-      <p class="text-sm text-stone-600 mb-6 leading-relaxed">
-        <strong>{{ user?.email }}</strong> 宛に確認メールを送信しました。<br />
-        メール内のリンクをクリックして、アカウントを有効化してください。
-      </p>
-
-      <div class="space-y-3">
-        <button
-          @click="checkVerification"
-          :disabled="loading"
-          class="w-full py-3 bg-teal-600 hover:bg-teal-500 text-white font-bold rounded-xl transition shadow-lg shadow-teal-200"
-        >
-          {{ loading ? "確認中..." : "認証完了 (アプリへ進む)" }}
-        </button>
-
-        <button
-          @click="resendEmail"
-          :disabled="loading"
-          class="w-full py-3 bg-white border border-stone-200 text-stone-600 font-bold rounded-xl hover:bg-stone-50 transition"
-        >
-          メールを再送信
-        </button>
-      </div>
-
-      <p v-if="message" class="mt-4 text-xs text-teal-600 font-bold">
-        {{ message }}
-      </p>
-
-      <div class="mt-8 pt-6 border-t border-stone-100">
-        <p class="text-xs text-stone-400 mb-2">メールが届かない場合</p>
-        <p class="text-[10px] text-stone-400">
-          ・迷惑メールフォルダをご確認ください<br />
-          ・メールアドレスが間違っている場合はログアウトしてやり直してください
-        </p>
-        <button
-          @click="handleLogout"
-          class="mt-4 text-xs text-stone-500 underline hover:text-stone-800"
-        >
-          ログアウト / アドレス変更
-        </button>
-      </div>
-    </div>
-  </div>
-</template>
-</file>
-
 <file path="src/App.vue">
 <script setup lang="ts">
 import { onMounted } from "vue";
@@ -5952,176 +5560,11 @@ onMounted(() => {
 </template>
 </file>
 
-<file path="src/env.d.ts">
-/// <reference types="vite/client" />
-
-declare module "*.vue" {
-  import type { DefineComponent } from "vue";
-  const component: DefineComponent<{}, {}, any>;
-  export default component;
-}
-</file>
-
-<file path="src/firebase.ts">
-import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
-import { getFirestore, enableIndexedDbPersistence } from "firebase/firestore";
-import { getStorage } from "firebase/storage";
-import { getMessaging } from "firebase/messaging"; // 追加
-
-const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
-};
-
-const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
-export const db = getFirestore(app);
-export const storage = getStorage(app);
-export const messaging = getMessaging(app); // 追加
-
-enableIndexedDbPersistence(db).catch((err) => {
-  if (err.code == "failed-precondition") {
-    console.error("複数タブで開いているためオフライン機能が無効です");
-  } else if (err.code == "unimplemented") {
-    console.error("ブラウザが対応していません");
-  }
-});
-</file>
-
-<file path="src/main.ts">
-import { createApp } from "vue";
-import "./style.css";
-import App from "./App.vue";
-import router from "./router";
-
-const app = createApp(App);
-app.use(router);
-app.mount("#app");
-</file>
-
-<file path="src/style.css">
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-:root {
-  /* 影の質感をApple風に調整 */
-  --shadow-soft: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
-  --shadow-card: 0 10px 40px -10px rgba(0, 0, 0, 0.08);
-}
-
-body {
-  /* 真っ白(#ffffff)ではなく、目に優しいごく薄いグレー */
-  background-color: #f8fafc;
-  color: #1e293b;
-  /* iOSのような滑らかな文字レンダリング */
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  /* 日本語フォントの最適化 */
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-    "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans",
-    Meiryo, sans-serif;
-}
-
-/* スクロールバーを隠してスタイリッシュに */
-.no-scrollbar::-webkit-scrollbar {
-  display: none;
-}
-.no-scrollbar {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
-
-/* グラスモーフィズム（すりガラス）効果 */
-.glass {
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
-}
-
-/* 高級感のあるカード */
-.modern-card {
-  background: white;
-  border-radius: 24px;
-  box-shadow: var(--shadow-soft);
-  border: 1px solid rgba(241, 245, 249, 1);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-.modern-card:active {
-  transform: scale(0.99);
-}
-
-/* アニメーション */
-@keyframes fadeInScale {
-  from {
-    opacity: 0;
-    transform: scale(0.98) translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
-}
-.animate-enter {
-  animation: fadeInScale 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-</file>
-
 <file path=".firebaserc">
 {
   "projects": {
     "default": "next-ns"
   }
-}
-</file>
-
-<file path=".gitignore">
-node_modules
-.DS_Store
-dist
-dist-ssr
-*.local
-.vscode/
-.env
-</file>
-
-<file path="firebase.json">
-{
-  "hosting": {
-    "public": "dist",
-    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
-    "rewrites": [
-      {
-        "source": "**",
-        "destination": "/index.html"
-      }
-    ]
-  },
-  "firestore": {
-    "rules": "firestore.rules",
-    "indexes": "firestore.indexes.json"
-  },
-  "functions": [
-    {
-      "source": "functions",
-      "codebase": "default",
-      "ignore": [
-        "node_modules",
-        ".git",
-        "firebase-debug.log",
-        "firebase-debug.*.log",
-        "*.local"
-      ],
-      "predeploy": ["npm --prefix \"$RESOURCE_DIR\" run build"]
-    }
-  ]
 }
 </file>
 
@@ -6230,10 +5673,11 @@ service cloud.firestore {
     <meta name="theme-color" content="#ffffff" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="apple-mobile-web-app-title" content="HairLink" />
+
+    <meta name="apple-mobile-web-app-title" content="NextNs" />
     <link rel="apple-touch-icon" href="/logo.png" />
 
-    <title>HairLink</title>
+    <title>NextNs</title>
   </head>
   <body>
     <div id="app"></div>
@@ -6282,51 +5726,6 @@ service cloud.firestore {
 }
 </file>
 
-<file path="postcss.config.js">
-export default {
-  plugins: {
-    tailwindcss: {},
-    autoprefixer: {},
-  },
-};
-</file>
-
-<file path="tailwind.config.js">
-/** @type {import('tailwindcss').Config} */
-export default {
-  content: ["./index.html", "./src/**/*.{vue,js,ts,jsx,tsx}"],
-  theme: {
-    extend: {},
-  },
-  plugins: [],
-};
-</file>
-
-<file path="tsconfig.json">
-{
-  "compilerOptions": {
-    "target": "ESNext",
-    "useDefineForClassFields": true,
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "strict": true,
-    "jsx": "preserve",
-    "sourceMap": true,
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "esModuleInterop": true,
-    "lib": ["ESNext", "DOM"],
-    "skipLibCheck": true,
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["src/*"]
-    },
-    "types": ["vite/client"]
-  },
-  "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.tsx", "src/**/*.vue"]
-}
-</file>
-
 <file path="vite.config.ts">
 import { fileURLToPath, URL } from "node:url";
 
@@ -6342,9 +5741,11 @@ export default defineConfig({
       registerType: "autoUpdate",
       includeAssets: ["favicon.ico", "apple-touch-icon.png", "logo.png"],
       manifest: {
-        name: "HairLink - 美容師とお客様をつなぐカルテ",
-        short_name: "HairLink",
-        description: "美容師とお客様のための共有カルテアプリ",
+        // ★ここを完全にNextNsに変更
+        name: "NextNs - 看護師国家試験対策",
+        short_name: "NextNs",
+        description:
+          "看護師国家試験対策のための学習支援アプリ。過去問演習、成績管理、AI解説機能付き。",
         theme_color: "#ffffff",
         background_color: "#ffffff",
         display: "standalone",
@@ -6375,6 +5776,22 @@ export default defineConfig({
     },
   },
 });
+</file>
+
+<file path=".firebase/hosting.ZGlzdA.cache">
+sw.js,1767286110862,ec1944b7a7aec87807f9d3f37cef24af9bb0b4d5dfaf7bb36fb024c003fb2c68
+registerSW.js,1767286110208,5b6445b5215737c53ef0d379c151d57de165a056de2d1c5812ed614f158ebcbd
+manifest.webmanifest,1767286110208,38b668f6b4595ac2fbe3c9a094b41388d52ce760fca354962834270d024aa479
+index.html,1767286110208,414d3e5da1b81174233750a4bc967c62fab43ae5d74c7555b4e11c1e134e093f
+workbox-8c29f6e4.js,1767286110862,c1360d97831a7585ba8f5c2631c0b3b78258637b50e1329c8f7fc0837604e59a
+assets/index-CTPBttxs.css,1767286110208,af264dc80aa177d958aadba69f8e4799f58dbdcdc06708e63dca1e11c0df40f7
+firebase-messaging-sw.js,1767286110069,8d8cf84c873b19b20b1328e697daeb3ef8d264cfe3e53683cd4da02a30ee90b1
+presentation.html,1767286110069,ae3b4772b21fdc1fc26348c7df9444275707a36e81107e5ccf9737ca72ec523d
+logo.png,1767286110069,121b31ad4cdaa0c40de36dfa9392079ab01285a12f2c6db18bfc5b935cefa843
+pwa-192x192.png,1767286110070,121b31ad4cdaa0c40de36dfa9392079ab01285a12f2c6db18bfc5b935cefa843
+pwa-512x512.png,1767286110070,121b31ad4cdaa0c40de36dfa9392079ab01285a12f2c6db18bfc5b935cefa843
+apple-touch-icon.png,1767286110069,121b31ad4cdaa0c40de36dfa9392079ab01285a12f2c6db18bfc5b935cefa843
+assets/index-BxhacR-g.js,1767286110208,c25fe8f85007a749694824074bfce14e3d1073ac6d1917eb56ec598df5528d06
 </file>
 
 </files>

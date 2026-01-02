@@ -30,12 +30,10 @@ const selectedIndex = ref<number | null>(null);
 const isAnswered = ref(false);
 const showAiComment = ref(false);
 
-// 克服済みかどうか
 const isCleared = computed(() =>
   clearedQuestionIds.value.has(props.question.id)
 );
 
-// 前回の自信度（復習モード用）
 const lastConfidence = computed(() => props.question.lastResult?.confidence);
 const lastCorrect = computed(() => props.question.lastResult?.isCorrect);
 
@@ -53,7 +51,6 @@ const handleChoice = (idx: number) => {
   selectedIndex.value = idx;
 };
 
-// 自信度ボタンが押されたら確定
 const submitWithConfidence = (confidence: "ok" | "so-so" | "ng") => {
   if (selectedIndex.value === null) return;
 
@@ -147,11 +144,12 @@ const handleAskAi = async () => {
           'border-slate-100 hover:bg-slate-50 text-slate-600':
             !isAnswered && selectedIndex !== idx,
           'border-blue-500 bg-blue-50 text-blue-700':
-            selectedIndex === idx && !isAnswered,
+            (selectedIndex === idx && !isAnswered) ||
+            (isAnswered && question.correctIndices.includes(idx)),
           'border-slate-300 bg-slate-100 text-slate-400':
-            isAnswered && selectedIndex !== idx,
-          'border-blue-400 bg-blue-50 text-blue-700':
-            isAnswered && question.correctIndices.includes(idx),
+            isAnswered &&
+            selectedIndex !== idx &&
+            !question.correctIndices.includes(idx),
           'border-red-400 bg-red-50 text-red-500 opacity-60':
             isAnswered &&
             selectedIndex === idx &&

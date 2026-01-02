@@ -27,7 +27,7 @@ const resendEmail = async () => {
   }
 };
 
-// 「確認しました」ボタン
+// 「確認しました」ボタン（リロードして状態確認）
 const checkVerification = async () => {
   if (!user) return;
   loading.value = true;
@@ -35,7 +35,7 @@ const checkVerification = async () => {
     await user.reload(); // Firebaseの状態を最新に更新
     if (user.emailVerified) {
       alert("認証を確認しました！");
-      router.push("/app");
+      router.push("/");
     } else {
       alert(
         "まだ認証が完了していません。\nメールのリンクをクリックしましたか？"
@@ -55,21 +55,23 @@ const handleLogout = async () => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-stone-50 flex items-center justify-center p-6">
+  <div
+    class="min-h-screen bg-slate-50 flex items-center justify-center p-6 font-sans"
+  >
     <div
-      class="max-w-md w-full bg-white rounded-3xl p-8 shadow-sm border border-stone-100 text-center"
+      class="max-w-md w-full bg-white rounded-3xl p-8 shadow-sm border border-slate-100 text-center"
     >
       <div
-        class="w-16 h-16 bg-teal-100 text-teal-600 rounded-full flex items-center justify-center text-3xl mx-auto mb-6"
+        class="w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center text-3xl mx-auto mb-6"
       >
         ✉️
       </div>
 
-      <h2 class="text-xl font-bold text-stone-800 mb-4">
+      <h2 class="text-xl font-bold text-slate-800 mb-4">
         メールアドレスの確認
       </h2>
 
-      <p class="text-sm text-stone-600 mb-6 leading-relaxed">
+      <p class="text-sm text-slate-600 mb-6 leading-relaxed">
         <strong>{{ user?.email }}</strong> 宛に確認メールを送信しました。<br />
         メール内のリンクをクリックして、アカウントを有効化してください。
       </p>
@@ -78,7 +80,7 @@ const handleLogout = async () => {
         <button
           @click="checkVerification"
           :disabled="loading"
-          class="w-full py-3 bg-teal-600 hover:bg-teal-500 text-white font-bold rounded-xl transition shadow-lg shadow-teal-200"
+          class="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition shadow-lg shadow-blue-200"
         >
           {{ loading ? "確認中..." : "認証完了 (アプリへ進む)" }}
         </button>
@@ -86,25 +88,28 @@ const handleLogout = async () => {
         <button
           @click="resendEmail"
           :disabled="loading"
-          class="w-full py-3 bg-white border border-stone-200 text-stone-600 font-bold rounded-xl hover:bg-stone-50 transition"
+          class="w-full py-3 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 transition"
         >
           メールを再送信
         </button>
       </div>
 
-      <p v-if="message" class="mt-4 text-xs text-teal-600 font-bold">
+      <p
+        v-if="message"
+        class="mt-4 text-xs text-blue-600 font-bold animate-pulse"
+      >
         {{ message }}
       </p>
 
-      <div class="mt-8 pt-6 border-t border-stone-100">
-        <p class="text-xs text-stone-400 mb-2">メールが届かない場合</p>
-        <p class="text-[10px] text-stone-400">
+      <div class="mt-8 pt-6 border-t border-slate-100">
+        <p class="text-xs text-slate-400 mb-2">メールが届かない場合</p>
+        <p class="text-[10px] text-slate-400">
           ・迷惑メールフォルダをご確認ください<br />
           ・メールアドレスが間違っている場合はログアウトしてやり直してください
         </p>
         <button
           @click="handleLogout"
-          class="mt-4 text-xs text-stone-500 underline hover:text-stone-800"
+          class="mt-4 text-xs text-slate-500 underline hover:text-slate-800"
         >
           ログアウト / アドレス変更
         </button>

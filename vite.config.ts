@@ -12,11 +12,11 @@ export default defineConfig({
       registerType: "autoUpdate",
       includeAssets: ["favicon.ico", "apple-touch-icon.png", "logo.png"],
       manifest: {
-        // ★ここを完全にNextNsに変更
         name: "NextNs - 看護師国家試験対策",
         short_name: "NextNs",
+        // 内容を微修正してマニフェストの更新を促す
         description:
-          "看護師国家試験対策のための学習支援アプリ。過去問演習、成績管理、AI解説機能付き。",
+          "看護師国家試験対策のための学習支援アプリ。最新の過去問とAI解説を搭載。",
         theme_color: "#ffffff",
         background_color: "#ffffff",
         display: "standalone",

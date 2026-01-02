@@ -1,7 +1,8 @@
 import { createRouter, createWebHistory } from "vue-router";
-import { getAuth, onAuthStateChanged } from "firebase/auth";
+import { getAuth, onAuthStateChanged, User } from "firebase/auth";
 import HomeView from "../views/HomeView/HomeView.vue";
 import LoginView from "../views/LoginView/LoginView.vue";
+import VerifyEmailView from "../views/VerifyEmailView/VerifyEmailView.vue"; // ★新規作成予定
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -10,23 +11,27 @@ const router = createRouter({
       path: "/",
       name: "home",
       component: HomeView,
-      meta: { requiresAuth: true }, // 認証が必要なページ
+      meta: { requiresAuth: true },
     },
     {
       path: "/login",
       name: "login",
       component: LoginView,
-      meta: { public: true }, // 誰でも見れるページ
+      meta: { public: true },
+    },
+    // ★追加: メール確認待機画面
+    {
+      path: "/verify-email",
+      name: "verify-email",
+      component: VerifyEmailView,
+      meta: { requiresAuth: true }, // ログインはしている状態なのでtrue
     },
   ],
 });
 
-// 画面遷移のたびに実行される「門番」の処理
 router.beforeEach(async (to, from, next) => {
   const auth = getAuth();
-
-  // Firebaseの認証状態が確定するまで待つプロミス（リロード対策）
-  const currentUser = await new Promise((resolve) => {
+  const currentUser = await new Promise<User | null>((resolve) => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       unsubscribe();
       resolve(user);
@@ -36,13 +41,26 @@ router.beforeEach(async (to, from, next) => {
   const requiresAuth = to.matched.some((record) => record.meta.requiresAuth);
 
   if (requiresAuth && !currentUser) {
-    // 認証が必要なのにログインしていない → ログイン画面へ飛ばす
+    // 未ログインならログイン画面へ
     next("/login");
-  } else if (to.path === "/login" && currentUser) {
-    // ログイン済みでログイン画面に来た → ホームへ飛ばす
+  } else if (
+    currentUser &&
+    !currentUser.emailVerified &&
+    to.name !== "verify-email"
+  ) {
+    // ★追加: ログインしてるけど「メール未認証」なら待機画面へ強制移動
+    next("/verify-email");
+  } else if (
+    currentUser &&
+    currentUser.emailVerified &&
+    to.name === "verify-email"
+  ) {
+    // ★追加: 認証済みなら待機画面には入れない（ホームへ）
+    next("/");
+  } else if (to.path === "/login" && currentUser && currentUser.emailVerified) {
+    // ログイン済み＆認証済みならホームへ
     next("/");
   } else {
-    // それ以外 → そのまま通す
     next();
   }
 });
