@@ -103,6 +103,10 @@ src/
     LoginView/
       LoginView.ts
       LoginView.vue
+    ReviewView/
+      ReviewView.vue
+    StudyView/
+      StudyView.vue
     TermsView/
       TermsView.vue
     VerifyEmailView/
@@ -127,6 +131,407 @@ vite.config.ts
 
 <files>
 This section contains the contents of the repository's files.
+
+<file path="src/views/ReviewView/ReviewView.vue">
+<script setup lang="ts">
+import { onMounted, ref, computed, watch } from "vue";
+import { useRouter } from "vue-router";
+import { useNextNs } from "@/composables/useNextNs";
+import QuizCard from "@/components/QuizCard/QuizCard.vue";
+
+const router = useRouter();
+const { reviewQuestions, loading, fetchReviewQuestions, saveAnswer } =
+  useNextNs();
+
+const isFinished = ref(false);
+const currentIndex = ref(0);
+
+const amPmFilter = ref<"all" | "am" | "pm">("all");
+const confidenceFilter = ref<"all" | "ok" | "ng" | "so-so">("all");
+
+onMounted(async () => {
+  await fetchReviewQuestions();
+});
+
+// ★ 復習画面の絞り込みロジック修正
+const filteredList = computed(() => {
+  return reviewQuestions.value.filter((q) => {
+    // 1. 午前・午後チェック
+    const matchTime =
+      amPmFilter.value === "all" ||
+      (amPmFilter.value === "am"
+        ? q.questionNumber.includes("午前")
+        : q.questionNumber.includes("午後"));
+
+    // 2. 自信度チェックの修正
+    const matchConfidence =
+      confidenceFilter.value === "all" ||
+      (confidenceFilter.value === "ok"
+        ? q.lastResult?.confidence === "ok" && q.lastResult?.isCorrect === true // ★「⭕️ かつ 正解」のみ
+        : confidenceFilter.value === "ng"
+        ? q.lastResult?.confidence === "ng" || q.lastResult?.isCorrect === false // ❌ または 不正解
+        : q.lastResult?.confidence === "so-so"); // 🔺
+
+    return matchTime && matchConfidence;
+  });
+});
+
+const currentQuestion = computed(
+  () => filteredList.value[currentIndex.value] || null
+);
+const hasAnsweredThisTime = ref(false);
+
+watch(
+  () => currentIndex.value,
+  () => {
+    hasAnsweredThisTime.value = false;
+  }
+);
+watch(
+  () => filteredList.value,
+  () => {
+    hasAnsweredThisTime.value = false;
+  },
+  { deep: true }
+);
+
+const handleAnswer = async (
+  isCorrect: boolean,
+  choiceIndex: number,
+  confidence: any
+) => {
+  if (!currentQuestion.value) return;
+  await saveAnswer(currentQuestion.value, choiceIndex, isCorrect, confidence);
+  hasAnsweredThisTime.value = true;
+};
+
+const handleNext = () => {
+  if (currentIndex.value < filteredList.value.length - 1) {
+    currentIndex.value++;
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  } else {
+    isFinished.value = true;
+  }
+};
+
+const resetFilter = () => {
+  currentIndex.value = 0;
+  isFinished.value = false;
+  hasAnsweredThisTime.value = false;
+};
+</script>
+
+<template>
+  <div class="min-h-screen bg-slate-50 pb-24 font-sans">
+    <header
+      class="bg-white px-6 py-4 sticky top-0 z-30 shadow-sm border-b flex items-center justify-between"
+    >
+      <button
+        @click="router.push('/')"
+        class="text-slate-400 font-bold text-sm"
+      >
+        ← 戻る
+      </button>
+      <div class="text-center">
+        <span
+          class="text-[10px] font-black text-orange-600 block tracking-widest uppercase"
+          >Review Mode</span
+        >
+        <span class="text-xs font-bold text-slate-400"
+          >対象: {{ filteredList.length }}問 ({{ currentIndex + 1 }}問目)</span
+        >
+      </div>
+      <div class="w-8"></div>
+    </header>
+
+    <main class="max-w-md mx-auto px-6 pt-6">
+      <div class="space-y-3 mb-8">
+        <div class="flex gap-2 bg-slate-200/50 p-1.5 rounded-2xl">
+          <button
+            v-for="m in [
+              { id: 'all', n: '全て' },
+              { id: 'am', n: '午前のみ' },
+              { id: 'pm', n: '午後のみ' },
+            ]"
+            :key="m.id"
+            @click="
+              amPmFilter = m.id as any;
+              resetFilter();
+            "
+            class="flex-1 py-2 text-[10px] font-bold rounded-xl transition-all"
+            :class="
+              amPmFilter === m.id
+                ? 'bg-white text-blue-600 shadow-sm'
+                : 'text-slate-500'
+            "
+          >
+            {{ m.n }}
+          </button>
+        </div>
+        <div class="flex gap-2 bg-orange-100/50 p-1.5 rounded-2xl">
+          <button
+            @click="
+              confidenceFilter = 'all';
+              resetFilter();
+            "
+            class="flex-1 py-2 text-[10px] font-bold rounded-xl transition-all"
+            :class="
+              confidenceFilter === 'all'
+                ? 'bg-white text-orange-600 shadow-sm'
+                : 'text-slate-500'
+            "
+          >
+            全て
+          </button>
+          <button
+            @click="
+              confidenceFilter = 'ok';
+              resetFilter();
+            "
+            class="flex-1 py-2 text-[10px] font-bold rounded-xl transition-all"
+            :class="
+              confidenceFilter === 'ok'
+                ? 'bg-white text-blue-600 shadow-sm'
+                : 'text-slate-500'
+            "
+          >
+            ⭕️
+          </button>
+          <button
+            @click="
+              confidenceFilter = 'ng';
+              resetFilter();
+            "
+            class="flex-1 py-2 text-[10px] font-bold rounded-xl transition-all"
+            :class="
+              confidenceFilter === 'ng'
+                ? 'bg-white text-red-600 shadow-sm'
+                : 'text-slate-500'
+            "
+          >
+            ❌
+          </button>
+          <button
+            @click="
+              confidenceFilter = 'so-so';
+              resetFilter();
+            "
+            class="flex-1 py-2 text-[10px] font-bold rounded-xl transition-all"
+            :class="
+              confidenceFilter === 'so-so'
+                ? 'bg-white text-yellow-600 shadow-sm'
+                : 'text-slate-500'
+            "
+          >
+            🔺
+          </button>
+        </div>
+      </div>
+
+      <div
+        v-if="loading"
+        class="py-20 text-center text-slate-400 font-bold animate-pulse tracking-widest"
+      >
+        Loading...
+      </div>
+
+      <div v-else-if="currentQuestion && !isFinished">
+        <QuizCard
+          :question="currentQuestion"
+          :index="currentIndex"
+          @answer="handleAnswer"
+        />
+        <button
+          v-if="hasAnsweredThisTime"
+          @click="handleNext"
+          class="w-full py-5 bg-orange-600 text-white font-black rounded-3xl shadow-xl shadow-orange-100 mt-4 active:scale-95 transition-all flex items-center justify-center gap-2"
+        >
+          <span>次の問題へ</span>
+          <span class="text-xl">→</span>
+        </button>
+      </div>
+
+      <div
+        v-else
+        class="text-center py-20 bg-white rounded-[40px] shadow-sm border border-slate-100 p-10"
+      >
+        <div class="text-6xl mb-6">✨</div>
+        <h2 class="text-xl font-black text-slate-800 mb-2">
+          条件に合う問題は<br />ありません
+        </h2>
+        <button
+          @click="router.push('/')"
+          class="w-full py-4 bg-slate-900 text-white font-black rounded-2xl shadow-xl active:scale-95 transition"
+        >
+          ホームへ戻る
+        </button>
+      </div>
+    </main>
+  </div>
+</template>
+</file>
+
+<file path="src/views/StudyView/StudyView.vue">
+<script setup lang="ts">
+import { onMounted, ref, computed } from "vue";
+import { useRouter } from "vue-router";
+import { useNextNs } from "@/composables/useNextNs";
+import QuizCard from "@/components/QuizCard/QuizCard.vue";
+
+const router = useRouter();
+const {
+  questions,
+  loading,
+  fetchQuestions,
+  selectedPeriod,
+  currentSessionIndex,
+  saveAnswer,
+  clearSession,
+  goToNext,
+} = useNextNs();
+
+const isFinished = ref(false);
+
+onMounted(async () => {
+  // 引数を空のオブジェクトにすることで型エラーを回避
+  await fetchQuestions({});
+});
+
+// インデックスに基づいて現在の問題を取得
+const currentQuestion = computed(
+  () => questions.value[currentSessionIndex.value] || null
+);
+
+const handleAnswer = async (
+  isCorrect: boolean,
+  choiceIndex: number,
+  confidence: any
+) => {
+  if (!currentQuestion.value) return;
+  await saveAnswer(currentQuestion.value, choiceIndex, isCorrect, confidence);
+};
+
+// 「次の問題へ」ボタンの処理
+const handleNext = () => {
+  if (currentSessionIndex.value < questions.value.length - 1) {
+    goToNext();
+  } else {
+    isFinished.value = true;
+  }
+};
+
+const resetAndFetch = async (mode: "all" | "am" | "pm") => {
+  if (confirm("現在の進捗をリセットして、新しく問題を読み込みますか？")) {
+    clearSession();
+    selectedPeriod.value = mode;
+    // ★ 修正箇所: boolean ではなくオブジェクト形式で渡してエラーを解消
+    await fetchQuestions({ force: true });
+    isFinished.value = false;
+  }
+};
+
+// QuizCard内の回答状況を判定する補助関数
+const isAnsweredLocally = (q: any) => {
+  return !!q?.lastResult;
+};
+</script>
+
+<template>
+  <div class="min-h-screen bg-slate-50 pb-24 font-sans">
+    <header
+      class="bg-white px-6 py-4 sticky top-0 z-30 shadow-sm border-b border-slate-100 flex items-center justify-between"
+    >
+      <button
+        @click="router.push('/')"
+        class="text-slate-400 font-bold text-sm"
+      >
+        ← 終了
+      </button>
+      <div class="text-center">
+        <span
+          class="text-[10px] font-black text-blue-600 block tracking-widest uppercase"
+          >Training Mode</span
+        >
+        <span class="text-xs font-bold text-slate-400">
+          今回: {{ currentSessionIndex + 1 }} / {{ questions.length }}問目
+        </span>
+      </div>
+      <button
+        @click="resetAndFetch(selectedPeriod)"
+        class="text-blue-500 text-[10px] font-black border border-blue-100 px-2 py-1 rounded-lg bg-blue-50 transition active:scale-95"
+      >
+        リセット
+      </button>
+    </header>
+
+    <main class="max-w-md mx-auto px-6 pt-6">
+      <div
+        v-if="!isFinished"
+        class="flex gap-2 mb-6 bg-slate-200/50 p-1 rounded-2xl"
+      >
+        <button
+          v-for="m in [
+            { id: 'all', n: '全件' },
+            { id: 'am', n: '午前のみ' },
+            { id: 'pm', n: '午後のみ' },
+          ]"
+          :key="m.id"
+          @click="resetAndFetch(m.id as any)"
+          class="flex-1 py-2 text-xs font-bold rounded-xl transition-all"
+          :class="
+            selectedPeriod === m.id
+              ? 'bg-white text-blue-600 shadow-sm'
+              : 'text-slate-500'
+          "
+        >
+          {{ m.n }}
+        </button>
+      </div>
+
+      <div
+        v-if="loading"
+        class="py-20 text-center text-slate-400 font-bold animate-pulse"
+      >
+        問題を準備しています...
+      </div>
+
+      <div v-else-if="currentQuestion && !isFinished">
+        <QuizCard
+          :question="currentQuestion"
+          :index="currentSessionIndex"
+          @answer="handleAnswer"
+        />
+
+        <button
+          v-if="isAnsweredLocally(currentQuestion)"
+          @click="handleNext"
+          class="w-full py-5 bg-blue-600 text-white font-black rounded-3xl shadow-xl shadow-blue-200 mt-4 active:scale-95 transition-all flex items-center justify-center gap-2"
+        >
+          <span>次の問題へ進む</span>
+          <span class="text-xl">→</span>
+        </button>
+      </div>
+
+      <div
+        v-else-if="isFinished"
+        class="text-center py-20 bg-white rounded-[40px] shadow-sm border p-8"
+      >
+        <div class="text-6xl mb-6">🎉</div>
+        <h2 class="text-xl font-black text-slate-800 mb-2">セッション完了！</h2>
+        <p class="text-slate-500 text-xs mb-8">
+          すべての問題を解き終えました。
+        </p>
+        <button
+          @click="router.push('/')"
+          class="w-full py-4 bg-blue-600 text-white font-bold rounded-2xl shadow-lg"
+        >
+          ホームへ戻る
+        </button>
+      </div>
+    </main>
+  </div>
+</template>
+</file>
 
 <file path="functions/.gitignore">
 node_modules/
@@ -1422,7 +1827,6 @@ onMounted(() => {
 });
 
 const chartData = computed(() => {
-  // データが空の場合のデフォルト表示
   if (studyLogs.value.length === 0) {
     return {
       labels: ["必修", "一般", "状況設定", "解剖生理", "基礎看護", "精神"],
@@ -1453,7 +1857,6 @@ const chartData = computed(() => {
     .sort((a, b) => stats[b].total - stats[a].total)
     .slice(0, 6);
 
-  // タグが少ない場合にデフォルトを補充
   if (topTags.length < 3) {
     const defaults = [
       "必修",
@@ -1524,14 +1927,18 @@ const formatDate = (date: any) => {
 </script>
 
 <template>
-  <div class="pb-24 animate-fade-in">
+  <div class="animate-fade-in">
     <div
       class="bg-gradient-to-br from-indigo-600 to-purple-700 rounded-3xl p-6 text-white shadow-lg shadow-indigo-200 mb-6 relative overflow-hidden"
     >
       <div class="relative z-10">
         <div class="flex justify-between items-start mb-4">
           <div>
-            <p class="text-[10px] font-bold opacity-70 mb-1">CURRENT RANK</p>
+            <p
+              class="text-[10px] font-bold opacity-70 mb-1 uppercase tracking-wider"
+            >
+              Current Rank
+            </p>
             <h2 class="text-2xl font-black tracking-tight">
               {{ currentRank }}
             </h2>
@@ -1542,28 +1949,19 @@ const formatDate = (date: any) => {
             <span class="font-black text-sm">Lv.{{ currentLevel }}</span>
           </div>
         </div>
-
         <div class="flex justify-between text-xs font-bold opacity-80 mb-2">
           <span>EXP: {{ totalExp }}</span>
           <span>Next: {{ 100 - levelProgress }}xp</span>
         </div>
-
         <div
           class="w-full bg-black/20 h-3 rounded-full overflow-hidden backdrop-blur-sm border border-white/10"
         >
           <div
-            class="bg-yellow-400 h-full rounded-full transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(250,204,21,0.6)]"
+            class="bg-yellow-400 h-full rounded-full transition-all duration-1000 ease-out"
             :style="{ width: `${levelProgress}%` }"
           ></div>
         </div>
       </div>
-
-      <div
-        class="absolute -right-8 -top-8 w-40 h-40 bg-white opacity-10 rounded-full blur-3xl"
-      ></div>
-      <div
-        class="absolute -left-8 -bottom-8 w-32 h-32 bg-purple-400 opacity-20 rounded-full blur-3xl"
-      ></div>
     </div>
 
     <div
@@ -1594,43 +1992,45 @@ const formatDate = (date: any) => {
         <p class="text-xs font-bold">まだ履歴がありません</p>
       </div>
 
-      <div v-else class="space-y-3">
-        <div
-          v-for="log in studyLogs"
-          :key="log.id"
-          class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-start gap-3 transition hover:border-blue-200"
-        >
+      <div v-else class="max-h-[400px] overflow-y-auto pr-2 no-scrollbar">
+        <div class="space-y-3">
           <div
-            class="w-10 h-10 rounded-full flex items-center justify-center text-lg flex-shrink-0"
-            :class="
-              log.isCorrect
-                ? 'bg-blue-50 text-blue-500'
-                : 'bg-red-50 text-red-500'
-            "
+            v-for="log in studyLogs"
+            :key="log.id"
+            class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-start gap-3 transition hover:border-blue-200"
           >
-            {{ log.isCorrect ? "⭕️" : "❌" }}
-          </div>
-
-          <div class="flex-1 min-w-0">
-            <div class="flex justify-between items-start mb-1">
-              <span
-                class="text-[10px] font-bold text-slate-400 bg-slate-50 px-2 py-0.5 rounded"
-              >
-                {{ formatDate(log.createdAt) }}
-              </span>
-            </div>
-            <p
-              class="text-sm font-bold text-slate-700 line-clamp-2 leading-relaxed"
+            <div
+              class="w-10 h-10 rounded-full flex items-center justify-center text-lg flex-shrink-0"
+              :class="
+                log.isCorrect
+                  ? 'bg-blue-50 text-blue-500'
+                  : 'bg-red-50 text-red-500'
+              "
             >
-              {{ log.question?.text || "問題文なし" }}
-            </p>
-            <div class="mt-2 flex gap-1 overflow-hidden">
-              <span
-                v-for="tag in log.question?.tags"
-                :key="tag"
-                class="text-[9px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded"
-                >#{{ tag }}</span
+              {{ log.isCorrect ? "⭕️" : "❌" }}
+            </div>
+
+            <div class="flex-1 min-w-0">
+              <div class="flex justify-between items-start mb-1">
+                <span
+                  class="text-[10px] font-bold text-slate-400 bg-slate-50 px-2 py-0.5 rounded"
+                >
+                  {{ formatDate(log.createdAt) }}
+                </span>
+              </div>
+              <p
+                class="text-sm font-bold text-slate-700 line-clamp-2 leading-relaxed"
               >
+                {{ log.question?.text || "問題文なし" }}
+              </p>
+              <div class="mt-2 flex gap-1 overflow-hidden">
+                <span
+                  v-for="tag in log.question?.tags"
+                  :key="tag"
+                  class="text-[9px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded"
+                  >#{{ tag }}</span
+                >
+              </div>
             </div>
           </div>
         </div>
@@ -1652,6 +2052,15 @@ const formatDate = (date: any) => {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* スクロールバーを非表示にする設定 */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
 }
 </style>
 </file>
@@ -1832,283 +2241,6 @@ const getTypeStyles = (type: string) => {
 .custom-scrollbar::-webkit-scrollbar-thumb {
   background: #cbd5e1;
   border-radius: 4px;
-}
-</style>
-</file>
-
-<file path="src/components/QuizCard/QuizCard.vue">
-<script setup lang="ts">
-import { ref, watch, computed } from "vue";
-import type { Question } from "@/types";
-import { useNextNs } from "@/composables/useNextNs";
-
-const {
-  askAI,
-  aiResponse,
-  isAiThinking,
-  toggleBookmark,
-  bookmarkedIds,
-  clearedQuestionIds,
-} = useNextNs();
-
-const props = defineProps<{
-  question: Question;
-  index: number;
-}>();
-
-const emit = defineEmits<{
-  (
-    e: "answer",
-    isCorrect: boolean,
-    choiceIndex: number,
-    confidence: "ok" | "so-so" | "ng"
-  ): void;
-}>();
-
-const selectedIndex = ref<number | null>(null);
-const isAnswered = ref(false);
-const showAiComment = ref(false);
-
-// 克服済みかどうか
-const isCleared = computed(() =>
-  clearedQuestionIds.value.has(props.question.id)
-);
-
-// 前回の自信度（復習モード用）
-const lastConfidence = computed(() => props.question.lastResult?.confidence);
-const lastCorrect = computed(() => props.question.lastResult?.isCorrect);
-
-watch(
-  () => props.question.id,
-  () => {
-    selectedIndex.value = null;
-    isAnswered.value = false;
-    showAiComment.value = false;
-  }
-);
-
-const handleChoice = (idx: number) => {
-  if (isAnswered.value) return;
-  selectedIndex.value = idx;
-};
-
-// 自信度ボタンが押されたら確定
-const submitWithConfidence = (confidence: "ok" | "so-so" | "ng") => {
-  if (selectedIndex.value === null) return;
-
-  isAnswered.value = true;
-  const isCorrect = props.question.correctIndices.includes(selectedIndex.value);
-  emit("answer", isCorrect, selectedIndex.value, confidence);
-};
-
-const handleAskAi = async () => {
-  showAiComment.value = true;
-  if (!aiResponse.value || !isAiThinking.value) {
-    await askAI(props.question);
-  }
-};
-</script>
-
-<template>
-  <div
-    class="bg-white rounded-3xl p-6 shadow-sm border mb-6 transition-all duration-300 relative overflow-hidden"
-    :class="
-      isCleared ? 'border-orange-300 bg-orange-50/50' : 'border-slate-100'
-    "
-  >
-    <div
-      v-if="isCleared"
-      class="absolute top-0 left-0 bg-orange-400 text-white text-[10px] font-bold px-3 py-1 rounded-br-xl z-20"
-    >
-      🎉 克服！
-    </div>
-
-    <div
-      v-if="lastConfidence"
-      class="absolute top-0 left-0 z-10 flex gap-1 p-2"
-    >
-      <span
-        v-if="lastCorrect === false"
-        class="bg-red-100 text-red-600 text-[10px] font-bold px-2 py-0.5 rounded"
-        >前回: 不正解</span
-      >
-      <span
-        v-if="lastConfidence === 'so-so'"
-        class="bg-yellow-100 text-yellow-600 text-[10px] font-bold px-2 py-0.5 rounded"
-        >前回: 🔺</span
-      >
-      <span
-        v-if="lastConfidence === 'ng'"
-        class="bg-red-100 text-red-600 text-[10px] font-bold px-2 py-0.5 rounded"
-        >前回: ❌</span
-      >
-    </div>
-
-    <button
-      @click.stop="toggleBookmark(question)"
-      class="absolute top-0 right-0 p-4 z-10 transition-transform active:scale-90 hover:scale-110"
-      :title="bookmarkedIds.has(question.id) ? '保存を解除' : '問題を保存'"
-    >
-      <span class="text-2xl filter drop-shadow-sm">
-        {{ bookmarkedIds.has(question.id) ? "🔖" : "📑" }}
-      </span>
-    </button>
-
-    <div class="flex justify-between items-center mb-4 pr-8 pt-6">
-      <span
-        class="text-[10px] font-bold bg-slate-100 text-slate-500 px-2 py-1 rounded-full"
-      >
-        {{ question.examYear }} {{ question.questionNumber }}
-      </span>
-      <div class="flex gap-1">
-        <span
-          v-for="tag in question.tags"
-          :key="tag"
-          class="text-[10px] text-blue-500 font-bold bg-blue-50 px-2 py-0.5 rounded-full"
-        >
-          #{{ tag }}
-        </span>
-      </div>
-    </div>
-
-    <h3 class="font-bold text-slate-800 text-lg mb-6 leading-relaxed">
-      <span class="text-blue-600 mr-2">Q{{ index + 1 }}.</span>
-      {{ question.text }}
-    </h3>
-
-    <div class="space-y-3">
-      <button
-        v-for="(choice, idx) in question.choices"
-        :key="idx"
-        @click="handleChoice(idx)"
-        class="w-full text-left p-4 rounded-xl border-2 transition-all duration-200 font-bold text-sm relative"
-        :class="{
-          'border-slate-100 hover:bg-slate-50 text-slate-600':
-            !isAnswered && selectedIndex !== idx,
-          'border-blue-500 bg-blue-50 text-blue-700':
-            selectedIndex === idx && !isAnswered,
-          'border-slate-300 bg-slate-100 text-slate-400':
-            isAnswered && selectedIndex !== idx,
-          'border-blue-400 bg-blue-50 text-blue-700':
-            isAnswered && question.correctIndices.includes(idx),
-          'border-red-400 bg-red-50 text-red-500 opacity-60':
-            isAnswered &&
-            selectedIndex === idx &&
-            !question.correctIndices.includes(idx),
-        }"
-        :disabled="isAnswered"
-      >
-        <span
-          class="absolute left-4 top-1/2 -translate-y-1/2 font-mono opacity-30"
-          >{{ idx + 1 }}</span
-        >
-        <span class="pl-6">{{ choice }}</span>
-
-        <span
-          v-if="isAnswered && question.correctIndices.includes(idx)"
-          class="absolute right-4 text-lg"
-          >🙆‍♂️</span
-        >
-        <span
-          v-if="
-            isAnswered &&
-            selectedIndex === idx &&
-            !question.correctIndices.includes(idx)
-          "
-          class="absolute right-4 text-lg"
-          >🙅‍♀️</span
-        >
-      </button>
-    </div>
-
-    <div
-      v-if="selectedIndex !== null && !isAnswered"
-      class="mt-6 pt-4 border-t border-dashed border-slate-200 animate-fade-in"
-    >
-      <p class="text-center text-xs font-bold text-slate-500 mb-3">
-        この回答の自信は？
-      </p>
-      <div class="flex gap-2 justify-center">
-        <button
-          @click="submitWithConfidence('ok')"
-          class="flex-1 py-3 rounded-xl bg-blue-50 text-blue-600 font-bold border border-blue-100 hover:bg-blue-100 transition shadow-sm"
-        >
-          ⭕️ 自信あり
-        </button>
-        <button
-          @click="submitWithConfidence('so-so')"
-          class="flex-1 py-3 rounded-xl bg-yellow-50 text-yellow-600 font-bold border border-yellow-100 hover:bg-yellow-100 transition shadow-sm"
-        >
-          🔺 あやふや
-        </button>
-        <button
-          @click="submitWithConfidence('ng')"
-          class="flex-1 py-3 rounded-xl bg-red-50 text-red-600 font-bold border border-red-100 hover:bg-red-100 transition shadow-sm"
-        >
-          ❌ 自信なし
-        </button>
-      </div>
-    </div>
-
-    <div
-      v-if="isAnswered"
-      class="mt-6 pt-6 border-t border-dashed border-slate-200 animate-fade-in"
-    >
-      <p class="text-xs font-bold text-slate-400 mb-2">解説</p>
-      <div
-        class="text-sm text-slate-700 leading-relaxed bg-slate-50 p-4 rounded-xl mb-4"
-      >
-        {{ question.explanation }}
-      </div>
-
-      <button
-        v-if="!showAiComment"
-        @click="handleAskAi"
-        class="w-full py-3 bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 flex items-center justify-center gap-2 hover:opacity-90 transition active:scale-95"
-      >
-        <span>🤖</span> AI先生に詳しく聞く
-      </button>
-
-      <div
-        v-else
-        class="bg-indigo-50 p-4 rounded-xl border border-indigo-100 animate-fade-in"
-      >
-        <div class="flex items-center gap-2 mb-2">
-          <span class="text-xl">🤖</span>
-          <span class="text-xs font-bold text-indigo-800">AI先生の解説</span>
-        </div>
-
-        <div v-if="isAiThinking" class="flex flex-col items-center py-4">
-          <div
-            class="animate-spin w-5 h-5 border-2 border-indigo-500 border-t-transparent rounded-full mb-2"
-          ></div>
-          <p class="text-[10px] text-indigo-400">解説を生成中...</p>
-        </div>
-
-        <div
-          v-else
-          class="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap"
-        >
-          {{ aiResponse }}
-        </div>
-      </div>
-    </div>
-  </div>
-</template>
-
-<style scoped>
-.animate-fade-in {
-  animation: fadeIn 0.3s ease-out;
-}
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(-5px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 </style>
 </file>
@@ -2614,239 +2746,246 @@ import {
 } from "firebase/firestore";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import axios from "axios";
 import type { Question, User, StudyLog } from "@/types";
 
-// --- ローカルストレージのキー ---
-const STORAGE_KEY_SESSION = "nextns_session_questions"; // 問題リスト
-const STORAGE_KEY_INDEX = "nextns_session_index"; // ★追加: 何問目まで解いたか
+const STORAGE_KEY_SESSION = "nextns_session_questions";
+const STORAGE_KEY_INDEX = "nextns_session_index";
+const STORAGE_KEY_PERIOD = "nextns_session_period";
 
-// グローバルステート
 const currentUser = ref<User | null>(null);
+const masterQuestions = ref<Question[]>([]);
 const questions = ref<Question[]>([]);
 const reviewQuestions = ref<Question[]>([]);
 const bookmarkedQuestions = ref<Question[]>([]);
 const bookmarkedIds = ref<Set<string>>(new Set());
 const studyLogs = ref<StudyLog[]>([]);
 const loading = ref(false);
-const clearedQuestionIds = ref<Set<string>>(new Set());
 
-// ★追加: 現在のセッションでの回答数（Q数カウント用）
 const currentSessionIndex = ref(0);
-
 const selectedPeriod = ref<"all" | "am" | "pm">("all");
 
-const todayLogCount = computed(() => {
-  const startOfDay = new Date();
-  startOfDay.setHours(0, 0, 0, 0);
-  return studyLogs.value.filter((log) => {
-    const logDate =
-      log.createdAt instanceof Date
-        ? log.createdAt
-        : (log.createdAt as any)?.toDate
-        ? (log.createdAt as any).toDate()
-        : new Date(log.createdAt);
-    return logDate >= startOfDay;
-  }).length;
-});
-
-const availableTags = computed(() => {
-  const tags = new Set<string>();
-  const source = [
-    ...questions.value,
-    ...reviewQuestions.value,
-    ...bookmarkedQuestions.value,
-  ];
-  source.forEach((q) => {
-    if (q.tags && Array.isArray(q.tags)) {
-      q.tags.forEach((t) => tags.add(t));
-    }
-  });
-  return Array.from(tags);
-});
-
-const totalExp = computed(() => {
-  return studyLogs.value.reduce((total, log) => {
-    return total + (log.isCorrect ? 20 : 5);
-  }, 0);
-});
-
-const currentLevel = computed(() => {
-  return Math.floor(totalExp.value / 100) + 1;
-});
-
-const levelProgress = computed(() => {
-  return totalExp.value % 100;
-});
-
+const totalExp = computed(() =>
+  studyLogs.value.reduce((t, log) => t + (log.isCorrect ? 20 : 5), 0)
+);
+const currentLevel = computed(() => Math.floor(totalExp.value / 100) + 1);
+const levelProgress = computed(() => totalExp.value % 100);
 const currentRank = computed(() => {
   const lv = currentLevel.value;
   if (lv < 5) return "新人ナースの卵";
   if (lv < 10) return "駆け出しナース";
   if (lv < 20) return "中堅ナース";
-  if (lv < 50) return "ベテランナース";
-  return "看護師長クラス";
+  return "ベテランナース";
+});
+
+const questionStats = computed(() => {
+  const stats: Record<string, { am: number; pm: number; total: number }> = {};
+  masterQuestions.value.forEach((q) => {
+    const year = q.examYear || "不明";
+    if (!stats[year]) stats[year] = { am: 0, pm: 0, total: 0 };
+    stats[year].total++;
+    if (q.questionNumber?.includes("午前")) stats[year].am++;
+    else if (q.questionNumber?.includes("午後")) stats[year].pm++;
+  });
+  return Object.entries(stats)
+    .map(([year, data]) => ({ year, ...data }))
+    .sort((a, b) => b.year.localeCompare(a.year, undefined, { numeric: true }));
 });
 
 export function useNextNs() {
   const aiResponse = ref("");
   const isAiThinking = ref(false);
 
-  // --- 中断セーブ・復帰機能 ---
   const saveSession = () => {
     if (questions.value.length > 0) {
       localStorage.setItem(
         STORAGE_KEY_SESSION,
         JSON.stringify(questions.value)
       );
-      // ★現在のカウント数も保存
       localStorage.setItem(
         STORAGE_KEY_INDEX,
         String(currentSessionIndex.value)
       );
+      localStorage.setItem(STORAGE_KEY_PERIOD, selectedPeriod.value);
     }
   };
 
-  const clearSession = () => {
-    localStorage.removeItem(STORAGE_KEY_SESSION);
-    localStorage.removeItem(STORAGE_KEY_INDEX);
-    questions.value = [];
-    currentSessionIndex.value = 0; // リセット
-  };
-
   const restoreSession = () => {
-    const savedQuestions = localStorage.getItem(STORAGE_KEY_SESSION);
-    const savedIndex = localStorage.getItem(STORAGE_KEY_INDEX);
-
-    if (savedQuestions) {
+    const saved = localStorage.getItem(STORAGE_KEY_SESSION);
+    const idx = localStorage.getItem(STORAGE_KEY_INDEX);
+    const prd = localStorage.getItem(STORAGE_KEY_PERIOD);
+    if (saved && idx) {
       try {
-        questions.value = JSON.parse(savedQuestions);
-        // ★保存されていたカウント数を復元
-        if (savedIndex) {
-          currentSessionIndex.value = parseInt(savedIndex, 10);
-        }
-        console.log("🔄 前回のセッションを復元しました");
+        questions.value = JSON.parse(saved);
+        currentSessionIndex.value = parseInt(idx, 10);
+        if (prd) selectedPeriod.value = prd as any;
         return true;
       } catch (e) {
-        console.error("セッション復元エラー", e);
         return false;
       }
     }
     return false;
   };
 
-  // --- ブックマーク機能 ---
-  const toggleBookmark = async (question: Question) => {
-    let userId = currentUser.value?.uid;
-    if (!userId) {
-      const user = auth.currentUser;
-      if (user) {
-        userId = user.uid;
-        currentUser.value = {
-          uid: user.uid,
-          email: user.email || "",
-          role: "student",
-          createdAt: new Date(),
-        };
-      } else {
-        alert("ログインしてください");
-        return;
-      }
-    }
+  const clearSession = () => {
+    localStorage.removeItem(STORAGE_KEY_SESSION);
+    localStorage.removeItem(STORAGE_KEY_INDEX);
+    localStorage.removeItem(STORAGE_KEY_PERIOD);
+    currentSessionIndex.value = 0;
+  };
 
-    if (bookmarkedIds.value.has(question.id)) {
-      bookmarkedIds.value.delete(question.id);
-      bookmarkedQuestions.value = bookmarkedQuestions.value.filter(
-        (q) => q.id !== question.id
+  const fetchAllQuestions = async () => {
+    if (masterQuestions.value.length > 0) return;
+    loading.value = true;
+    try {
+      const q = query(collection(db, "questions"), limit(5000));
+      const snap = await getDocs(q);
+      masterQuestions.value = snap.docs.map(
+        (d) => ({ id: d.id, ...d.data() } as Question)
       );
-      try {
-        const q = query(
-          collection(db, "bookmarks"),
-          where("userId", "==", userId),
-          where("questionId", "==", question.id)
-        );
-        const snap = await getDocs(q);
-        snap.forEach(async (d) => await deleteDoc(d.ref));
-      } catch (e) {
-        console.error(e);
-      }
-    } else {
-      bookmarkedIds.value.add(question.id);
-      bookmarkedQuestions.value.unshift(question);
-      try {
-        await addDoc(collection(db, "bookmarks"), {
-          userId: userId,
-          questionId: question.id,
-          question: question,
-          createdAt: serverTimestamp(),
-        });
-      } catch (e) {
-        console.error(e);
-        bookmarkedIds.value.delete(question.id);
-      }
+    } finally {
+      loading.value = false;
     }
+  };
+
+  const fetchReviewQuestions = async () => {
+    if (!currentUser.value) return;
+    const q = query(
+      collection(db, "study_logs"),
+      where("userId", "==", currentUser.value.uid),
+      limit(1000)
+    );
+    const snap = await getDocs(q);
+    const logs = snap.docs.map((d) => d.data() as StudyLog);
+    const reviewMap = new Map<string, Question>();
+    logs.sort(
+      (a, b) => (a.createdAt?.toDate?.() || 0) - (b.createdAt?.toDate?.() || 0)
+    );
+    logs.forEach((log) => {
+      if (!log.question?.id) return;
+      // 復習対象：不正解、もしくは自信度が「ok」以外
+      if (!log.isCorrect || log.confidence !== "ok") {
+        reviewMap.set(log.question.id, {
+          ...log.question,
+          lastResult: { isCorrect: log.isCorrect, confidence: log.confidence },
+        });
+      } else {
+        reviewMap.delete(log.question.id);
+      }
+    });
+    reviewQuestions.value = Array.from(reviewMap.values()).reverse();
+  };
+
+  const fetchHistory = async () => {
+    if (!currentUser.value) return;
+    const q = query(
+      collection(db, "study_logs"),
+      where("userId", "==", currentUser.value.uid),
+      limit(100)
+    );
+    const snap = await getDocs(q);
+    studyLogs.value = snap.docs
+      .map(
+        (d) =>
+          ({
+            id: d.id,
+            ...d.data(),
+            createdAt: d.data().createdAt?.toDate() || new Date(),
+          } as StudyLog)
+      )
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   };
 
   const fetchBookmarks = async () => {
     if (!currentUser.value) return;
-    try {
-      const q = query(
-        collection(db, "bookmarks"),
-        where("userId", "==", currentUser.value.uid)
-      );
-      const snap = await getDocs(q);
-      const items = snap.docs.map((d) => ({
-        ...d.data(),
-        createdAt: d.data().createdAt?.toDate
-          ? d.data().createdAt.toDate()
-          : new Date(),
-      }));
-      items.sort(
-        (a: any, b: any) => b.createdAt.getTime() - a.createdAt.getTime()
-      );
-
-      const list: Question[] = [];
-      const ids = new Set<string>();
-      items.forEach((data: any) => {
-        if (data.question) {
-          list.push(data.question as Question);
-          ids.add(data.questionId);
-        }
-      });
-      bookmarkedQuestions.value = list;
-      bookmarkedIds.value = ids;
-    } catch (e) {
-      console.error(e);
-    }
+    const q = query(
+      collection(db, "bookmarks"),
+      where("userId", "==", currentUser.value.uid)
+    );
+    const snap = await getDocs(q);
+    bookmarkedQuestions.value = snap.docs.map(
+      (d) => d.data().question as Question
+    );
+    bookmarkedIds.value = new Set(snap.docs.map((d) => d.data().questionId));
   };
 
-  // --- AI機能 ---
-  const askAI = async (question: Question, userQuery?: string) => {
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-    if (!apiKey) {
-      aiResponse.value = "⚠️ APIキーが設定されていません。";
-      return;
+  const toggleBookmark = async (question: Question) => {
+    const uid = currentUser.value?.uid;
+    if (!uid) return;
+    if (bookmarkedIds.value.has(question.id)) {
+      bookmarkedIds.value.delete(question.id);
+      const q = query(
+        collection(db, "bookmarks"),
+        where("userId", "==", uid),
+        where("questionId", "==", question.id)
+      );
+      const s = await getDocs(q);
+      s.forEach((d) => deleteDoc(d.ref));
+    } else {
+      bookmarkedIds.value.add(question.id);
+      await addDoc(collection(db, "bookmarks"), {
+        userId: uid,
+        questionId: question.id,
+        question,
+        createdAt: serverTimestamp(),
+      });
     }
+    await fetchBookmarks();
+  };
+
+  const saveAnswer = async (
+    q: Question,
+    choice: number,
+    isCorrect: boolean,
+    confidence: any
+  ) => {
+    const uid = currentUser.value?.uid;
+    if (!uid) return;
+    q.lastResult = { isCorrect, confidence, userChoice: [choice] };
+    saveSession();
+    await addDoc(collection(db, "study_logs"), {
+      userId: uid,
+      questionId: q.id,
+      question: q,
+      userChoice: [choice],
+      isCorrect,
+      confidence,
+      createdAt: serverTimestamp(),
+    });
+    await Promise.all([fetchReviewQuestions(), fetchHistory()]);
+  };
+
+  const goToNext = () => {
+    currentSessionIndex.value++;
+    saveSession();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const askAI = async (q: Question) => {
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+    if (!apiKey) return (aiResponse.value = "APIキー未設定");
     isAiThinking.value = true;
     aiResponse.value = "";
     try {
+      const listUrl = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`;
+      const listResponse = await fetch(listUrl);
+      const listData = await listResponse.json();
+      const generationModels = (listData.models || []).filter((m: any) =>
+        m.supportedGenerationMethods?.includes("generateContent")
+      );
+      const flash = generationModels.find((m: any) =>
+        m.name.includes("gemini-1.5-flash")
+      );
+      const targetModel = (flash || generationModels[0])?.name.replace(
+        "models/",
+        ""
+      );
       const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-      const correctNumbers = question.correctIndices
-        .map((i) => i + 1)
-        .join(", ");
-      const prompt = `
-        あなたは看護学生の学習をサポートするチューターです。
-        【指示】
-        1. 「正解は ${correctNumbers} です」から始めてください。
-        2. なぜその答えになるのか、重要なキーワードを使って解説してください。
-        3. 他の選択肢がなぜ間違いなのか指摘してください。
-        【問題】${question.text}
-        【選択肢】${question.choices.map((c, i) => `${i + 1}. ${c}`).join("\n")}
-        【質問】${userQuery || "解説をお願いします。"}
-      `;
-      const result = await model.generateContent(prompt);
-      aiResponse.value = (await result.response).text();
+      const model = genAI.getGenerativeModel({ model: targetModel });
+      const prompt = `あなたは看護学生の学習をサポートするチューターです。「正解は ${q.correctIndices.map(
+        (i) => i + 1
+      )} です」から始めて、問題 「${q.text}」 を詳しく解説してください。`;
+      const res = await model.generateContent(prompt);
+      aiResponse.value = res.response.text();
     } catch (e: any) {
       aiResponse.value = "AIエラー: " + e.message;
     } finally {
@@ -2854,253 +2993,98 @@ export function useNextNs() {
     }
   };
 
-  const initAuth = () => {
-    onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        if (!currentUser.value)
-          currentUser.value = {
-            uid: user.uid,
-            email: user.email || "",
-            role: "student",
-            createdAt: new Date(),
-          } as User;
-        await fetchUserProfile(user.uid);
-      } else {
-        currentUser.value = null;
-      }
-    });
-  };
-
-  const fetchUserProfile = async (uid: string) => {
-    try {
-      const snap = await getDoc(doc(db, "users", uid));
-      if (snap.exists()) currentUser.value = { uid, ...snap.data() } as User;
-      else
-        await setDoc(
-          doc(db, "users", uid),
-          {
-            uid,
-            email: auth.currentUser?.email,
-            role: "student",
-            createdAt: new Date(),
-          },
-          { merge: true }
-        );
-      await Promise.all([
-        fetchHistory(),
-        fetchReviewQuestions(),
-        fetchBookmarks(),
-      ]);
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  // --- 回答保存 ---
-  const saveAnswer = async (
-    question: Question,
-    choiceIndex: number,
-    isCorrect: boolean,
-    confidence?: "ok" | "so-so" | "ng"
+  // --- ★ 演習モードの拡張 ---
+  const fetchQuestions = async (
+    options: {
+      force?: boolean;
+      mode?: "random100" | "examYear";
+      year?: string;
+    } = {}
   ) => {
-    let userId = currentUser.value?.uid;
-    if (!userId && auth.currentUser) userId = auth.currentUser.uid;
-    if (!userId) return;
-
-    const newLog: StudyLog = {
-      id: "temp_" + Date.now(),
-      userId,
-      questionId: question.id,
-      question,
-      userChoice: [choiceIndex],
-      isCorrect,
-      timeTaken: 10,
-      createdAt: new Date(),
-      confidence,
-    };
-    studyLogs.value.unshift(newLog);
-
-    if (!isCorrect || confidence === "so-so" || confidence === "ng") {
-      const existingIdx = reviewQuestions.value.findIndex(
-        (q) => q.id === question.id
-      );
-      const updatedQ = {
-        ...question,
-        lastResult: { isCorrect, confidence, userChoice: [choiceIndex] },
-      };
-      if (existingIdx !== -1) reviewQuestions.value.splice(existingIdx, 1);
-      reviewQuestions.value.unshift(updatedQ);
-      clearedQuestionIds.value.delete(question.id);
-    } else {
-      if (reviewQuestions.value.some((q) => q.id === question.id))
-        clearedQuestionIds.value.add(question.id);
-    }
-
-    // ★演習モードの進捗管理
-    const qIndex = questions.value.findIndex((q) => q.id === question.id);
-    if (qIndex !== -1) {
-      questions.value.splice(qIndex, 1); // リストから削除
-      currentSessionIndex.value++; // ★カウントアップ
-      saveSession(); // 状態保存
-    }
-
-    try {
-      await addDoc(collection(db, "study_logs"), {
-        userId,
-        questionId: question.id,
-        question,
-        userChoice: [choiceIndex],
-        isCorrect,
-        timeTaken: 10,
-        confidence: confidence || null,
-        createdAt: serverTimestamp(),
-      });
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const fetchHistory = async () => {
-    if (!currentUser.value) return;
-    try {
-      const q = query(
-        collection(db, "study_logs"),
-        where("userId", "==", currentUser.value.uid),
-        limit(100)
-      );
-      const snap = await getDocs(q);
-      const logs = snap.docs.map(
-        (d) =>
-          ({
-            id: d.id,
-            ...d.data(),
-            createdAt: d.data().createdAt?.toDate
-              ? d.data().createdAt.toDate()
-              : new Date(),
-          } as StudyLog)
-      );
-      studyLogs.value = logs.sort(
-        (a, b) => b.createdAt.getTime() - a.createdAt.getTime()
-      );
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const fetchReviewQuestions = async () => {
-    if (!currentUser.value) return;
-    try {
-      clearedQuestionIds.value.clear();
-      const q = query(
-        collection(db, "study_logs"),
-        where("userId", "==", currentUser.value.uid),
-        limit(300)
-      );
-      const snap = await getDocs(q);
-      const logs = snap.docs.map((d) => d.data() as StudyLog);
-      logs.sort(
-        (a: any, b: any) =>
-          a.createdAt.toDate().getTime() - b.createdAt.toDate().getTime()
-      );
-
-      const reviewMap = new Map<string, Question>();
-      logs.forEach((log) => {
-        if (log.question?.id) {
-          if (
-            !log.isCorrect ||
-            log.confidence === "so-so" ||
-            log.confidence === "ng"
-          ) {
-            reviewMap.set(log.question.id, {
-              ...log.question,
-              lastResult: {
-                isCorrect: log.isCorrect,
-                confidence: log.confidence,
-              },
-            });
-          } else if (log.isCorrect && log.confidence === "ok") {
-            reviewMap.delete(log.question.id);
-          }
-        }
-      });
-      reviewQuestions.value = Array.from(reviewMap.values()).reverse();
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const logout = async () => {
-    clearSession();
-    await signOut(auth);
-    window.location.reload();
-  };
-
-  // --- 問題取得（フィルター対応） ---
-  const fetchQuestions = async (forceRefresh = false) => {
-    if (!forceRefresh && questions.value.length > 0) return;
-    if (!forceRefresh && restoreSession()) return; // 復元できたら終了
-
+    if (!options.force && restoreSession()) return;
     loading.value = true;
     try {
-      const q = query(collection(db, "questions"), limit(1000));
-      const snap = await getDocs(q);
-      let list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Question));
+      await fetchAllQuestions();
+      let list = [...masterQuestions.value];
 
-      if (selectedPeriod.value === "am") {
-        list = list.filter((q) => q.questionNumber.includes("午前"));
-      } else if (selectedPeriod.value === "pm") {
-        list = list.filter((q) => q.questionNumber.includes("午後"));
-      }
+      // 午前・午後フィルタ
+      if (selectedPeriod.value === "am")
+        list = list.filter((q) => q.questionNumber?.includes("午前"));
+      if (selectedPeriod.value === "pm")
+        list = list.filter((q) => q.questionNumber?.includes("午後"));
 
-      for (let i = list.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [list[i], list[j]] = [list[j], list[i]];
+      if (options.mode === "random100") {
+        list.sort(() => Math.random() - 0.5);
+        list = list.slice(0, 100);
+      } else if (options.mode === "examYear" && options.year) {
+        list = list.filter((q) => q.examYear === options.year);
+        // 回指定の場合は問題番号順（午前1〜午後120）に並べるのが一般的
+        list.sort((a, b) =>
+          a.questionNumber.localeCompare(b.questionNumber, undefined, {
+            numeric: true,
+          })
+        );
+      } else {
+        // デフォルト：全件ランダム
+        list.sort(() => Math.random() - 0.5);
       }
 
       questions.value = list;
-      currentSessionIndex.value = 0; // ★新規取得時はカウントリセット
+      currentSessionIndex.value = 0;
       saveSession();
-    } catch (e) {
-      console.error("問題取得エラー:", e);
     } finally {
       loading.value = false;
     }
   };
 
-  watch(selectedPeriod, () => {
-    clearSession();
-    fetchQuestions(true);
-  });
-
   return {
     currentUser,
+    masterQuestions,
     questions,
+    questionStats,
     reviewQuestions,
-    clearedQuestionIds,
     bookmarkedQuestions,
     bookmarkedIds,
     studyLogs,
     loading,
-    todayLogCount,
-    availableTags,
-    aiResponse,
-    isAiThinking,
     totalExp,
     currentLevel,
     levelProgress,
     currentRank,
     selectedPeriod,
-    currentSessionIndex, // ★公開: UI側で使う
-    askAI,
-    initAuth,
-    logout,
+    currentSessionIndex,
+    aiResponse,
+    isAiThinking,
+    initAuth: () =>
+      onAuthStateChanged(auth, async (user) => {
+        if (user) {
+          const snap = await getDoc(doc(db, "users", user.uid));
+          currentUser.value = { uid: user.uid, ...snap.data() } as User;
+          await Promise.all([
+            fetchAllQuestions(),
+            fetchHistory(),
+            fetchReviewQuestions(),
+            fetchBookmarks(),
+          ]);
+        } else {
+          currentUser.value = null;
+        }
+      }),
     fetchQuestions,
-    fetchHistory,
+    fetchAllQuestions,
     fetchReviewQuestions,
+    fetchHistory,
     fetchBookmarks,
     toggleBookmark,
     saveAnswer,
+    askAI,
     clearSession,
+    goToNext,
+    logout: async () => {
+      clearSession();
+      await signOut(auth);
+      window.location.reload();
+    },
   };
 }
 </file>
@@ -3564,97 +3548,6 @@ const router = useRouter();
 再度デプロイする。 ```bash npm run build firebase deploy
 </file>
 
-<file path="src/views/LoginView/LoginView.ts">
-import { ref } from "vue";
-import {
-  getAuth,
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  sendEmailVerification,
-  signOut,
-} from "firebase/auth";
-import { getFirestore, doc, setDoc } from "firebase/firestore";
-import { useRouter } from "vue-router";
-
-export default function useLoginView() {
-  const router = useRouter();
-  const isLoginMode = ref(true);
-  const email = ref("");
-  const password = ref("");
-  const loading = ref(false);
-
-  const handleSubmit = async () => {
-    if (!email.value || !password.value) return alert("入力してください");
-    loading.value = true;
-    const auth = getAuth();
-    const db = getFirestore();
-
-    try {
-      if (isLoginMode.value) {
-        // --- ログイン ---
-        const userCredential = await signInWithEmailAndPassword(
-          auth,
-          email.value,
-          password.value
-        );
-        const user = userCredential.user;
-
-        if (!user.emailVerified) {
-          // 未認証なら待機画面へ
-          router.push("/verify-email");
-        } else {
-          router.push("/");
-        }
-      } else {
-        // --- 新規登録 ---
-        const userCredential = await createUserWithEmailAndPassword(
-          auth,
-          email.value,
-          password.value
-        );
-        const user = userCredential.user;
-
-        // ユーザー情報保存
-        await setDoc(doc(db, "users", user.uid), {
-          email: email.value,
-          role: "student",
-          createdAt: new Date(),
-        });
-
-        // ★メール送信
-        await sendEmailVerification(user);
-        alert(
-          "確認メールを送信しました。\nメール内のリンクをクリックしてください。"
-        );
-
-        // 待機画面へ
-        router.push("/verify-email");
-      }
-    } catch (e: any) {
-      console.error(e);
-      let msg = "エラーが発生しました";
-      if (e.code === "auth/email-already-in-use")
-        msg = "このメールアドレスは既に登録されています";
-      if (e.code === "auth/weak-password")
-        msg = "パスワードは6文字以上にしてください";
-      if (e.code === "auth/invalid-credential")
-        msg = "メールアドレスまたはパスワードが間違っています";
-      alert(msg);
-    } finally {
-      loading.value = false;
-    }
-  };
-
-  return {
-    isLoginMode,
-    email,
-    password,
-    loading,
-    handleSubmit,
-  };
-}
-</file>
-
 <file path="src/views/TermsView/TermsView.vue">
 <script setup lang="ts">
 import { useRouter } from "vue-router";
@@ -3719,128 +3612,6 @@ const router = useRouter();
         </section>
 
         <p class="mt-8 text-xs text-stone-400">2025年12月20日 制定</p>
-      </div>
-    </div>
-  </div>
-</template>
-</file>
-
-<file path="src/views/VerifyEmailView/VerifyEmailView.vue">
-<script setup lang="ts">
-import { ref } from "vue";
-import { getAuth, sendEmailVerification, signOut } from "firebase/auth";
-import { useRouter } from "vue-router";
-
-const auth = getAuth();
-const router = useRouter();
-const user = auth.currentUser;
-const loading = ref(false);
-const message = ref("");
-
-// 再送信処理
-const resendEmail = async () => {
-  if (!user) return;
-  loading.value = true;
-  try {
-    await sendEmailVerification(user);
-    message.value = "確認メールを再送信しました。";
-  } catch (e: any) {
-    if (e.code === "auth/too-many-requests") {
-      message.value = "少し時間を置いてから再試行してください。";
-    } else {
-      message.value = "送信に失敗しました。";
-    }
-  } finally {
-    loading.value = false;
-  }
-};
-
-// 「確認しました」ボタン（リロードして状態確認）
-const checkVerification = async () => {
-  if (!user) return;
-  loading.value = true;
-  try {
-    await user.reload(); // Firebaseの状態を最新に更新
-    if (user.emailVerified) {
-      alert("認証を確認しました！");
-      router.push("/");
-    } else {
-      alert(
-        "まだ認証が完了していません。\nメールのリンクをクリックしましたか？"
-      );
-    }
-  } catch (e) {
-    console.error(e);
-  } finally {
-    loading.value = false;
-  }
-};
-
-const handleLogout = async () => {
-  await signOut(auth);
-  router.push("/login");
-};
-</script>
-
-<template>
-  <div
-    class="min-h-screen bg-slate-50 flex items-center justify-center p-6 font-sans"
-  >
-    <div
-      class="max-w-md w-full bg-white rounded-3xl p-8 shadow-sm border border-slate-100 text-center"
-    >
-      <div
-        class="w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center text-3xl mx-auto mb-6"
-      >
-        ✉️
-      </div>
-
-      <h2 class="text-xl font-bold text-slate-800 mb-4">
-        メールアドレスの確認
-      </h2>
-
-      <p class="text-sm text-slate-600 mb-6 leading-relaxed">
-        <strong>{{ user?.email }}</strong> 宛に確認メールを送信しました。<br />
-        メール内のリンクをクリックして、アカウントを有効化してください。
-      </p>
-
-      <div class="space-y-3">
-        <button
-          @click="checkVerification"
-          :disabled="loading"
-          class="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition shadow-lg shadow-blue-200"
-        >
-          {{ loading ? "確認中..." : "認証完了 (アプリへ進む)" }}
-        </button>
-
-        <button
-          @click="resendEmail"
-          :disabled="loading"
-          class="w-full py-3 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 transition"
-        >
-          メールを再送信
-        </button>
-      </div>
-
-      <p
-        v-if="message"
-        class="mt-4 text-xs text-blue-600 font-bold animate-pulse"
-      >
-        {{ message }}
-      </p>
-
-      <div class="mt-8 pt-6 border-t border-slate-100">
-        <p class="text-xs text-slate-400 mb-2">メールが届かない場合</p>
-        <p class="text-[10px] text-slate-400">
-          ・迷惑メールフォルダをご確認ください<br />
-          ・メールアドレスが間違っている場合はログアウトしてやり直してください
-        </p>
-        <button
-          @click="handleLogout"
-          class="mt-4 text-xs text-slate-500 underline hover:text-slate-800"
-        >
-          ログアウト / アドレス変更
-        </button>
       </div>
     </div>
   </div>
@@ -4127,6 +3898,284 @@ setGlobalOptions({
 
 // 現在、NextNsアプリではサーバーサイド(Cloud Functions)の処理は使用していないため
 // 定義を空にしています。将来的に通知機能などを追加する場合はここに記述します。
+</file>
+
+<file path="src/components/QuizCard/QuizCard.vue">
+<script setup lang="ts">
+import { ref, watch, computed } from "vue";
+import type { Question } from "@/types";
+import { useNextNs } from "@/composables/useNextNs";
+
+const { askAI, aiResponse, isAiThinking, toggleBookmark, bookmarkedIds } =
+  useNextNs();
+const props = defineProps<{ question: Question; index: number }>();
+const emit = defineEmits<{
+  (
+    e: "answer",
+    isCorrect: boolean,
+    choiceIndex: number,
+    confidence: "ok" | "so-so" | "ng"
+  ): void;
+}>();
+
+const selectedIndex = ref<number | null>(null);
+const isAnswered = ref(false); // このコンポーネント内での回答フラグ
+const showAiComment = ref(false);
+const showPopup = ref<"correct" | "incorrect" | null>(null);
+
+// 問題が切り替わったら、全ての状態をリセットする（解き直しを可能にする）
+watch(
+  () => props.question.id,
+  () => {
+    selectedIndex.value = null;
+    isAnswered.value = false;
+    showAiComment.value = false;
+    showPopup.value = null;
+  },
+  { immediate: true }
+);
+
+const handleChoice = (idx: number) => {
+  if (isAnswered.value) return;
+  selectedIndex.value = idx;
+};
+
+const submitWithConfidence = (confidence: "ok" | "so-so" | "ng") => {
+  if (selectedIndex.value === null) return;
+
+  const isCorrect = props.question.correctIndices.includes(selectedIndex.value);
+
+  // ポップアップ演出の開始
+  showPopup.value = isCorrect ? "correct" : "incorrect";
+
+  // 判定フラグを立てて、親へ通知
+  isAnswered.value = true;
+  emit("answer", isCorrect, selectedIndex.value, confidence);
+
+  // 1.2秒後にポップアップを消す
+  setTimeout(() => {
+    showPopup.value = null;
+  }, 1200);
+};
+
+const handleAskAi = async () => {
+  showAiComment.value = true;
+  await askAI(props.question);
+};
+
+// 解説に表示する正解テキスト
+const correctAnswerLabel = computed(() => {
+  return props.question.correctIndices.map((i) => i + 1).join("・");
+});
+</script>
+
+<template>
+  <div
+    class="bg-white rounded-[40px] p-8 shadow-sm border border-slate-100 mb-6 relative overflow-hidden transition-all"
+  >
+    <Transition name="judge-pop">
+      <div
+        v-if="showPopup"
+        class="absolute inset-0 z-50 flex items-center justify-center pointer-events-none bg-white/40 backdrop-blur-[2px]"
+      >
+        <div
+          v-if="showPopup === 'correct'"
+          class="text-[120px] leading-none text-red-500 font-bold drop-shadow-xl"
+        >
+          ⭕️
+        </div>
+        <div
+          v-if="showPopup === 'incorrect'"
+          class="text-[120px] leading-none text-blue-500 font-bold drop-shadow-xl"
+        >
+          ❌
+        </div>
+      </div>
+    </Transition>
+
+    <button
+      @click="toggleBookmark(question)"
+      class="absolute top-6 right-6 text-2xl transition active:scale-90"
+    >
+      {{ bookmarkedIds.has(question.id) ? "🔖" : "📑" }}
+    </button>
+
+    <div class="flex justify-between items-center mb-6 pr-8">
+      <span
+        class="text-[10px] font-bold bg-slate-100 text-slate-500 px-3 py-1 rounded-full uppercase tracking-widest"
+        >{{ question.examYear }}</span
+      >
+      <div class="flex gap-1">
+        <span
+          v-for="tag in question.tags"
+          :key="tag"
+          class="text-[10px] text-blue-500 font-bold bg-blue-50 px-2.5 py-1 rounded-full"
+          >#{{ tag }}</span
+        >
+      </div>
+    </div>
+
+    <h3 class="font-bold text-slate-800 text-lg mb-8 leading-relaxed">
+      <span class="text-blue-600 mr-2">Q{{ index + 1 }}.</span
+      >{{ question.text }}
+    </h3>
+
+    <div class="space-y-3">
+      <button
+        v-for="(choice, idx) in question.choices"
+        :key="idx"
+        @click="handleChoice(idx)"
+        class="w-full text-left p-5 rounded-2xl border-2 transition-all font-bold text-sm relative"
+        :class="{
+          'border-slate-100 hover:bg-slate-50':
+            !isAnswered && selectedIndex !== idx,
+          'border-blue-500 bg-blue-50 text-blue-700':
+            selectedIndex === idx && !isAnswered,
+          'border-red-500 bg-red-50 text-red-700 ring-2 ring-red-100':
+            isAnswered && question.correctIndices.includes(idx),
+          'border-slate-300 bg-slate-100 text-slate-400':
+            isAnswered &&
+            !question.correctIndices.includes(idx) &&
+            selectedIndex !== idx,
+          'border-blue-400 bg-blue-50 text-blue-600 opacity-80':
+            isAnswered &&
+            selectedIndex === idx &&
+            !question.correctIndices.includes(idx),
+        }"
+        :disabled="isAnswered"
+      >
+        <span class="pl-2">{{ choice }}</span>
+      </button>
+    </div>
+
+    <div
+      v-if="selectedIndex !== null && !isAnswered"
+      class="mt-8 pt-6 border-t border-dashed border-slate-200 animate-enter text-center"
+    >
+      <p
+        class="text-xs font-bold text-slate-400 mb-4 tracking-widest uppercase"
+      >
+        Confidence check
+      </p>
+      <div class="flex gap-3">
+        <button
+          @click="submitWithConfidence('ok')"
+          class="flex-1 py-4 rounded-2xl bg-blue-600 text-white font-black shadow-lg shadow-blue-100 active:scale-95 transition"
+        >
+          ⭕️ 自信あり
+        </button>
+        <button
+          @click="submitWithConfidence('so-so')"
+          class="flex-1 py-4 rounded-2xl bg-yellow-400 text-white font-black shadow-lg shadow-yellow-100 active:scale-95 transition"
+        >
+          🔺 三角
+        </button>
+        <button
+          @click="submitWithConfidence('ng')"
+          class="flex-1 py-4 rounded-2xl bg-red-500 text-white font-black shadow-lg shadow-red-100 active:scale-95 transition"
+        >
+          ❌ バツ
+        </button>
+      </div>
+    </div>
+
+    <div
+      v-if="isAnswered"
+      class="mt-8 pt-8 border-t border-dashed border-slate-200 animate-enter"
+    >
+      <div
+        class="mb-6 flex flex-col items-center justify-center p-4 bg-red-50 rounded-2xl border border-red-100"
+      >
+        <span
+          class="text-xs font-bold text-red-400 uppercase tracking-widest mb-1"
+          >Answer</span
+        >
+        <div class="text-2xl font-black text-red-600">
+          正解は {{ correctAnswerLabel }} です
+        </div>
+      </div>
+
+      <p
+        class="text-xs font-bold text-slate-400 mb-3 uppercase tracking-widest"
+      >
+        Explanation
+      </p>
+      <div
+        class="text-sm text-slate-700 leading-relaxed bg-slate-50 p-6 rounded-[32px] mb-6 shadow-inner"
+      >
+        {{ question.explanation }}
+      </div>
+
+      <button
+        v-if="!showAiComment"
+        @click="handleAskAi"
+        class="w-full py-4 bg-slate-900 text-white font-black rounded-2xl flex items-center justify-center gap-2 shadow-xl active:scale-95 transition"
+      >
+        <span>🤖</span> AI先生に詳しく聞く
+      </button>
+
+      <div
+        v-else
+        class="bg-indigo-50 p-6 rounded-[32px] border border-indigo-100 relative"
+      >
+        <div v-if="isAiThinking" class="text-center py-6">
+          <div
+            class="animate-spin w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full mx-auto mb-2"
+          ></div>
+          <p class="text-[10px] font-bold text-indigo-400">
+            AI Tutor is thinking...
+          </p>
+        </div>
+        <div
+          v-else
+          class="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap"
+        >
+          {{ aiResponse }}
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+/* 判定ポップアップのアニメーション */
+.judge-pop-enter-active {
+  animation: pop-in 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.judge-pop-leave-active {
+  animation: pop-in 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) reverse;
+}
+
+@keyframes pop-in {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  70% {
+    transform: scale(1.2);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.animate-enter {
+  animation: slide-up 0.3s ease-out;
+}
+
+@keyframes slide-up {
+  from {
+    transform: translateY(10px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+</style>
 </file>
 
 <file path="src/components/ReservationModal/ReservationModal.ts">
@@ -4472,77 +4521,6 @@ const inactiveClass = "text-slate-400 hover:text-slate-600";
     </button>
   </nav>
 </template>
-</file>
-
-<file path="src/router/index.ts">
-import { createRouter, createWebHistory } from "vue-router";
-import { getAuth, onAuthStateChanged, User } from "firebase/auth";
-import HomeView from "../views/HomeView/HomeView.vue";
-import LoginView from "../views/LoginView/LoginView.vue";
-import VerifyEmailView from "../views/VerifyEmailView/VerifyEmailView.vue"; // ★新規作成予定
-
-const router = createRouter({
-  history: createWebHistory(import.meta.env.BASE_URL),
-  routes: [
-    {
-      path: "/",
-      name: "home",
-      component: HomeView,
-      meta: { requiresAuth: true },
-    },
-    {
-      path: "/login",
-      name: "login",
-      component: LoginView,
-      meta: { public: true },
-    },
-    // ★追加: メール確認待機画面
-    {
-      path: "/verify-email",
-      name: "verify-email",
-      component: VerifyEmailView,
-      meta: { requiresAuth: true }, // ログインはしている状態なのでtrue
-    },
-  ],
-});
-
-router.beforeEach(async (to, from, next) => {
-  const auth = getAuth();
-  const currentUser = await new Promise<User | null>((resolve) => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      unsubscribe();
-      resolve(user);
-    });
-  });
-
-  const requiresAuth = to.matched.some((record) => record.meta.requiresAuth);
-
-  if (requiresAuth && !currentUser) {
-    // 未ログインならログイン画面へ
-    next("/login");
-  } else if (
-    currentUser &&
-    !currentUser.emailVerified &&
-    to.name !== "verify-email"
-  ) {
-    // ★追加: ログインしてるけど「メール未認証」なら待機画面へ強制移動
-    next("/verify-email");
-  } else if (
-    currentUser &&
-    currentUser.emailVerified &&
-    to.name === "verify-email"
-  ) {
-    // ★追加: 認証済みなら待機画面には入れない（ホームへ）
-    next("/");
-  } else if (to.path === "/login" && currentUser && currentUser.emailVerified) {
-    // ログイン済み＆認証済みならホームへ
-    next("/");
-  } else {
-    next();
-  }
-});
-
-export default router;
 </file>
 
 <file path="src/types/index.ts">
@@ -5008,428 +4986,348 @@ export default function useHomeView() {
 </file>
 
 <file path="src/views/HomeView/HomeView.vue">
-<script setup lang="ts">
-import { onMounted, computed, ref, watch } from "vue";
-import { useNextNs } from "@/composables/useNextNs";
-import QuizCard from "@/components/QuizCard/QuizCard.vue";
-import TheBottomNav from "@/components/TheBottomNav/TheBottomNav.vue";
-import SettingsTab from "@/components/SettingsTab/SettingsTab.vue";
-import MyPage from "@/components/MyPage/MyPage.vue";
-import JsonUploader from "@/components/JsonUploader.vue";
-import type { Question } from "@/types";
-
-const {
-  questions,
-  reviewQuestions,
-  bookmarkedQuestions,
-  loading,
-  fetchQuestions,
-  fetchReviewQuestions,
-  fetchBookmarks,
-  currentUser,
-  logout,
-  saveAnswer,
-  todayLogCount,
-  availableTags,
-  currentLevel,
-  selectedPeriod,
-  clearSession,
-  currentSessionIndex,
-} = useNextNs();
-
-const currentTab = ref("home");
-const studyMode = ref<"daily" | "review" | "bookmark">("daily");
-const selectedTag = ref<string | null>(null);
-
-// ★追加: 復習モード用の絞り込みフィルター
-const reviewFilter = ref<"all" | "incorrect" | "ng" | "so-so">("all");
-
-onMounted(() => {
-  fetchQuestions();
-});
-
-watch(studyMode, (newMode) => {
-  if (newMode === "daily") fetchQuestions();
-  if (newMode === "review") fetchReviewQuestions();
-  if (newMode === "bookmark") fetchBookmarks();
-  selectedTag.value = null;
-  reviewFilter.value = "all"; // モード変更時にフィルターリセット
-});
-
-const onAnswer = async (
-  question: Question,
-  isCorrect: boolean,
-  choiceIndex: number,
-  confidence: "ok" | "so-so" | "ng"
-) => {
-  await saveAnswer(question, choiceIndex, isCorrect, confidence);
-};
-
-const handleReset = () => {
-  if (confirm("現在の進行状況をリセットして、新しい問題をロードしますか？")) {
-    clearSession();
-    fetchQuestions(true);
-  }
-};
-
-const dailyGoal = 10;
-const progressPercent = computed(() =>
-  Math.min((todayLogCount.value / dailyGoal) * 100, 100)
-);
-
-const displayQuestions = computed(() => {
-  let list: Question[] = [];
-
-  if (studyMode.value === "daily") {
-    list = questions.value;
-  } else if (studyMode.value === "review") {
-    list = reviewQuestions.value;
-
-    // ★復習モードの絞り込みロジック
-    if (reviewFilter.value === "incorrect") {
-      // 不正解だったもの
-      list = list.filter((q) => q.lastResult && !q.lastResult.isCorrect);
-    } else if (reviewFilter.value === "ng") {
-      // 自信なし(❌)としたもの
-      list = list.filter((q) => q.lastResult?.confidence === "ng");
-    } else if (reviewFilter.value === "so-so") {
-      // あやふや(🔺)としたもの
-      list = list.filter((q) => q.lastResult?.confidence === "so-so");
-    }
-  } else if (studyMode.value === "bookmark") {
-    list = bookmarkedQuestions.value;
-  }
-
-  // タグフィルター（全モード共通）
-  if (selectedTag.value) {
-    list = list.filter((q) => q.tags.includes(selectedTag.value!));
-  }
-
-  return list;
-});
-
-const modeTitle = computed(() => {
-  if (studyMode.value === "daily") return "演習";
-  if (studyMode.value === "review") return "復習";
-  return "保存";
-});
-</script>
-
 <template>
-  <div class="min-h-screen bg-[#F8FAFC] pb-24 font-sans">
+  <div class="h-screen flex flex-col bg-slate-50 font-sans">
     <header
-      class="fixed top-0 left-0 right-0 z-40 bg-white/90 backdrop-blur-md border-b border-slate-100 h-16"
+      class="bg-white px-6 py-6 shadow-sm border-b border-slate-100 flex justify-between items-center flex-shrink-0 z-30"
     >
-      <div
-        class="max-w-lg mx-auto px-5 h-full flex justify-between items-center"
+      <h1
+        class="text-2xl font-black text-slate-800 tracking-tight flex items-center gap-2"
       >
-        <h1
-          class="font-black text-xl tracking-tight text-slate-800 flex items-center gap-1"
-        >
-          <span class="text-blue-600 text-2xl">⚡️</span> NextNs
-        </h1>
-        <div class="flex items-center gap-3">
-          <div
-            class="bg-indigo-100 text-indigo-700 px-2 py-1 rounded-lg text-[10px] font-black border border-indigo-200"
-          >
-            Lv.{{ currentLevel }}
-          </div>
-          <button
-            @click="logout"
-            class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 hover:bg-slate-200 transition"
-          >
-            🚪
-          </button>
-        </div>
-      </div>
+        <span class="bg-blue-600 text-white p-1.5 rounded-xl">Next</span>Ns
+      </h1>
+      <button
+        @click="logout"
+        class="text-xs font-bold text-slate-400 hover:text-slate-600 transition"
+      >
+        ログアウト
+      </button>
     </header>
 
-    <main class="max-w-lg mx-auto px-5 pt-24">
-      <div v-if="currentTab === 'home'">
-        <div class="flex bg-slate-100 p-1 rounded-xl mb-4 gap-1">
-          <button
-            @click="studyMode = 'daily'"
-            class="flex-1 py-2 rounded-lg text-[10px] font-bold transition-all duration-200 whitespace-nowrap"
-            :class="
-              studyMode === 'daily'
-                ? 'bg-white text-blue-600 shadow-sm'
-                : 'text-slate-400 hover:text-slate-600'
-            "
-          >
-            🔥 演習
-          </button>
-          <button
-            @click="studyMode = 'review'"
-            class="flex-1 py-2 rounded-lg text-[10px] font-bold transition-all duration-200 whitespace-nowrap"
-            :class="
-              studyMode === 'review'
-                ? 'bg-white text-orange-500 shadow-sm'
-                : 'text-slate-400 hover:text-slate-600'
-            "
-          >
-            💪 復習
-          </button>
-          <button
-            @click="studyMode = 'bookmark'"
-            class="flex-1 py-2 rounded-lg text-[10px] font-bold transition-all duration-200 whitespace-nowrap"
-            :class="
-              studyMode === 'bookmark'
-                ? 'bg-white text-teal-600 shadow-sm'
-                : 'text-slate-400 hover:text-slate-600'
-            "
-          >
-            ★ 保存
-          </button>
-        </div>
-
-        <div
-          v-if="studyMode === 'daily'"
-          class="flex justify-between items-center mb-4"
-        >
-          <div class="flex gap-2">
-            <button
-              @click="selectedPeriod = 'all'"
-              class="px-3 py-1 rounded-full text-xs font-bold border transition"
-              :class="
-                selectedPeriod === 'all'
-                  ? 'bg-slate-800 text-white'
-                  : 'bg-white text-slate-500'
-              "
-            >
-              すべて
-            </button>
-            <button
-              @click="selectedPeriod = 'am'"
-              class="px-3 py-1 rounded-full text-xs font-bold border transition"
-              :class="
-                selectedPeriod === 'am'
-                  ? 'bg-slate-800 text-white'
-                  : 'bg-white text-slate-500'
-              "
-            >
-              午前
-            </button>
-            <button
-              @click="selectedPeriod = 'pm'"
-              class="px-3 py-1 rounded-full text-xs font-bold border transition"
-              :class="
-                selectedPeriod === 'pm'
-                  ? 'bg-slate-800 text-white'
-                  : 'bg-white text-slate-500'
-              "
-            >
-              午後
-            </button>
-          </div>
-          <button
-            @click="handleReset"
-            class="text-[10px] text-red-400 underline"
-          >
-            進行リセット
-          </button>
-        </div>
-
-        <div v-if="studyMode === 'review'" class="mb-4">
-          <div class="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
-            <button
-              @click="reviewFilter = 'all'"
-              class="px-3 py-1.5 rounded-lg text-xs font-bold border transition whitespace-nowrap"
-              :class="
-                reviewFilter === 'all'
-                  ? 'bg-orange-500 text-white border-orange-500'
-                  : 'bg-white text-slate-500'
-              "
-            >
-              すべて
-            </button>
-            <button
-              @click="reviewFilter = 'incorrect'"
-              class="px-3 py-1.5 rounded-lg text-xs font-bold border transition whitespace-nowrap"
-              :class="
-                reviewFilter === 'incorrect'
-                  ? 'bg-slate-700 text-white border-slate-700'
-                  : 'bg-white text-slate-500'
-              "
-            >
-              不正解のみ
-            </button>
-            <button
-              @click="reviewFilter = 'ng'"
-              class="px-3 py-1.5 rounded-lg text-xs font-bold border transition whitespace-nowrap"
-              :class="
-                reviewFilter === 'ng'
-                  ? 'bg-red-500 text-white border-red-500'
-                  : 'bg-white text-slate-500'
-              "
-            >
-              ❌ 自信なし
-            </button>
-            <button
-              @click="reviewFilter = 'so-so'"
-              class="px-3 py-1.5 rounded-lg text-xs font-bold border transition whitespace-nowrap"
-              :class="
-                reviewFilter === 'so-so'
-                  ? 'bg-yellow-500 text-white border-yellow-500'
-                  : 'bg-white text-slate-500'
-              "
-            >
-              🔺 あやふや
-            </button>
-          </div>
-        </div>
-
-        <div class="flex gap-2 overflow-x-auto pb-4 no-scrollbar mb-2">
-          <button
-            @click="selectedTag = null"
-            class="whitespace-nowrap px-4 py-1.5 rounded-full text-xs font-bold border transition-all"
-            :class="
-              selectedTag === null
-                ? 'bg-slate-800 text-white border-slate-800'
-                : 'bg-white text-slate-500 border-slate-200'
-            "
-          >
-            すべて
-          </button>
-          <button
-            v-for="tag in availableTags"
-            :key="tag"
-            @click="selectedTag = tag"
-            class="whitespace-nowrap px-4 py-1.5 rounded-full text-xs font-bold border transition-all"
-            :class="
-              selectedTag === tag
-                ? 'bg-blue-500 text-white border-blue-500'
-                : 'bg-white text-slate-500 border-slate-200'
-            "
-          >
-            #{{ tag }}
-          </button>
-        </div>
-
-        <div
-          v-if="loading"
-          class="flex flex-col items-center justify-center py-20"
-        >
+    <main class="flex-1 overflow-y-auto no-scrollbar pb-32">
+      <div class="max-w-md mx-auto px-6 mt-8 space-y-6">
+        <div v-if="currentTab === 'home'" class="space-y-6 animate-fade-in">
           <div
-            class="animate-spin w-10 h-10 border-4 border-t-transparent rounded-full mb-4"
-            :class="
-              studyMode === 'review' ? 'border-orange-500' : 'border-blue-600'
-            "
-          ></div>
-          <p class="text-xs font-bold text-slate-400 animate-pulse">
-            読み込み中...
-          </p>
-        </div>
-
-        <div v-else>
-          <div
-            v-if="studyMode === 'daily'"
-            class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 mb-6"
+            class="bg-blue-600 rounded-[32px] p-6 text-white shadow-xl shadow-blue-200"
           >
-            <div
-              class="flex justify-between text-xs font-bold text-slate-500 mb-2"
-            >
-              <span>今日の目標</span>
-              <span>{{ todayLogCount }} / {{ dailyGoal }}問</span>
+            <div class="flex justify-between items-start mb-6">
+              <div>
+                <p
+                  class="text-blue-100 text-[10px] font-bold uppercase tracking-widest mb-1"
+                >
+                  Question Database
+                </p>
+                <div class="text-4xl font-black">
+                  {{ masterQuestions.length
+                  }}<span class="text-lg ml-1 opacity-70">問</span>
+                </div>
+              </div>
+              <div class="bg-white/20 p-3 rounded-2xl backdrop-blur-md">📊</div>
             </div>
-            <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+            <div class="flex justify-between text-xs font-bold mb-2">
+              <span>Rank: {{ currentRank }}</span>
+              <span>Lv.{{ currentLevel }}</span>
+            </div>
+            <div class="h-2 bg-white/20 rounded-full overflow-hidden">
               <div
-                class="bg-blue-500 h-full rounded-full transition-all duration-500"
-                :style="{ width: `${progressPercent}%` }"
+                class="h-full bg-white transition-all duration-1000"
+                :style="{ width: levelProgress + '%' }"
               ></div>
             </div>
           </div>
 
-          <div class="flex justify-between items-end mb-6 px-1">
-            <h2 class="font-bold text-xl text-slate-800">
-              <span v-if="selectedTag" class="text-blue-500 mr-2"
-                >#{{ selectedTag }}</span
-              >
-              <span v-else>{{ modeTitle }}</span>
-            </h2>
-            <span
-              class="text-xs font-bold px-3 py-1 rounded-full border shadow-sm bg-white text-slate-500"
+          <div class="grid grid-cols-1 gap-4">
+            <div
+              class="bg-white rounded-3xl p-2 border border-slate-100 shadow-sm space-y-1"
             >
-              残り {{ displayQuestions.length }}問
-            </span>
+              <p
+                class="text-[10px] font-black text-slate-400 px-4 pt-2 uppercase tracking-widest"
+              >
+                Training Mode
+              </p>
+              <button
+                @click="startStudy('random')"
+                class="w-full flex items-center gap-4 p-4 hover:bg-slate-50 rounded-2xl transition group"
+              >
+                <span class="text-2xl group-hover:scale-110 transition"
+                  >🎲</span
+                >
+                <div class="text-left">
+                  <div class="font-black text-slate-800 text-sm">
+                    全件ランダム
+                  </div>
+                  <p class="text-[9px] text-slate-400">
+                    登録されているすべての問題から出題
+                  </p>
+                </div>
+              </button>
+              <button
+                @click="startStudy('random100')"
+                class="w-full flex items-center gap-4 p-4 hover:bg-slate-50 rounded-2xl transition group"
+              >
+                <span class="text-2xl group-hover:scale-110 transition"
+                  >💯</span
+                >
+                <div class="text-left">
+                  <div class="font-black text-slate-800 text-sm">
+                    ランダム100問
+                  </div>
+                  <p class="text-[9px] text-slate-400">
+                    実力テストに最適。100問をピックアップ
+                  </p>
+                </div>
+              </button>
+            </div>
+
+            <button
+              @click="$router.push('/review')"
+              class="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm text-left group transition hover:border-orange-200 active:scale-95 flex items-center gap-4"
+            >
+              <div class="text-2xl group-hover:scale-110 transition">🔄</div>
+              <div>
+                <div class="font-black text-slate-800">復習モード</div>
+                <p class="text-[9px] text-slate-400">
+                  苦手集中 ({{ reviewQuestions.length }}問)
+                </p>
+              </div>
+            </button>
           </div>
 
-          <div v-if="displayQuestions.length > 0">
-            <template v-if="studyMode === 'daily'">
-              <QuizCard
-                v-if="displayQuestions[0]"
-                :key="displayQuestions[0].id"
-                :question="displayQuestions[0]"
-                :index="currentSessionIndex"
-                @answer="
-                  (isCorrect, idx, confidence) =>
-                    onAnswer(displayQuestions[0], isCorrect, idx, confidence)
-                "
-              />
-            </template>
-            <template v-else>
-              <QuizCard
-                v-for="(q, index) in displayQuestions"
+          <section
+            class="bg-white rounded-3xl p-5 border border-slate-100 shadow-sm"
+          >
+            <h2
+              class="font-bold text-slate-800 mb-4 flex items-center gap-2 text-sm"
+            >
+              📂 試験回別に解く
+            </h2>
+            <div class="overflow-x-auto">
+              <table class="w-full text-[10px] text-left">
+                <thead class="text-slate-400 border-b border-slate-50">
+                  <tr>
+                    <th>年度</th>
+                    <th class="text-center">午前</th>
+                    <th class="text-center">午後</th>
+                    <th class="text-right">操作</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-50">
+                  <tr
+                    v-for="stat in questionStats"
+                    :key="stat.year"
+                    class="text-slate-600"
+                  >
+                    <td class="py-3 font-bold text-slate-800">
+                      {{ stat.year }}
+                    </td>
+                    <td class="py-3 text-center">{{ stat.am }}</td>
+                    <td class="py-3 text-center">{{ stat.pm }}</td>
+                    <td class="py-3 text-right">
+                      <button
+                        @click="startStudy('examYear', stat.year)"
+                        class="bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg font-black hover:bg-blue-600 hover:text-white transition active:scale-90"
+                      >
+                        開始
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+          <JsonUploader />
+        </div>
+
+        <div
+          v-else-if="currentTab === 'history'"
+          class="animate-fade-in space-y-6"
+        >
+          <MyPage />
+          <div
+            class="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm"
+          >
+            <h2 class="font-black text-slate-800 mb-4 flex items-center gap-2">
+              🔖 保存した問題 ({{ bookmarkedQuestions.length }})
+            </h2>
+            <div
+              v-if="bookmarkedQuestions.length === 0"
+              class="text-center py-12 text-slate-400 text-xs font-bold bg-slate-50/50 rounded-2xl border border-dashed"
+            >
+              保存された問題はまだありません
+            </div>
+            <div v-else class="space-y-4">
+              <div
+                v-for="q in bookmarkedQuestions"
                 :key="q.id"
-                :question="q"
-                :index="index"
-                @answer="
-                  (isCorrect, idx, confidence) =>
-                    onAnswer(q, isCorrect, idx, confidence)
-                "
-              />
-            </template>
-          </div>
-
-          <div v-else class="text-center py-20 text-slate-400">
-            <template v-if="studyMode === 'review'">
-              <p class="text-4xl mb-4">🎉</p>
-              <p class="font-bold">素晴らしい！</p>
-              <p class="text-xs mt-2">
-                復習が必要な問題はありません<br />（または条件に合う問題がありません）
-              </p>
-            </template>
-            <template v-else-if="studyMode === 'daily'">
-              <p class="text-4xl mb-4">🎉</p>
-              <p class="font-bold">問題はありません</p>
-              <p class="text-xs mt-2">
-                すべての問題を解き終えました！<br />リセットして再挑戦できます。
-              </p>
-            </template>
-            <template v-else>
-              <p class="text-4xl mb-4">📭</p>
-              <p class="font-bold">問題が見つかりません</p>
-            </template>
+                class="p-4 bg-slate-50 rounded-2xl border border-slate-100 relative group hover:border-blue-200 transition"
+              >
+                <div
+                  class="flex justify-between text-[9px] font-bold text-slate-400 mb-1"
+                >
+                  <span>{{ q.examYear }} {{ q.questionNumber }}</span>
+                  <button
+                    @click="toggleBookmark(q)"
+                    class="text-blue-500 hover:text-blue-700 font-bold"
+                  >
+                    解除
+                  </button>
+                </div>
+                <p
+                  class="text-xs font-bold text-slate-700 leading-relaxed line-clamp-3"
+                >
+                  {{ q.text }}
+                </p>
+              </div>
+            </div>
           </div>
         </div>
 
-        <JsonUploader />
-      </div>
-
-      <div v-else-if="currentTab === 'history'">
-        <MyPage />
-      </div>
-
-      <div v-else-if="currentTab === 'settings'">
-        <SettingsTab :currentUser="currentUser" />
+        <div v-else-if="currentTab === 'settings'" class="animate-fade-in">
+          <SettingsTab :currentUser="currentUser" />
+        </div>
       </div>
     </main>
 
-    <TheBottomNav
-      :currentTab="currentTab"
-      @update:currentTab="currentTab = $event"
-    />
+    <TheBottomNav v-model:currentTab="currentTab" class="z-40" />
   </div>
 </template>
 
-<style>
-.no-scrollbar::-webkit-scrollbar {
-  display: none;
+<script setup lang="ts">
+import { ref, onMounted } from "vue";
+import { useRouter } from "vue-router";
+import { useNextNs } from "@/composables/useNextNs";
+import JsonUploader from "@/components/JsonUploader.vue";
+import TheBottomNav from "@/components/TheBottomNav/TheBottomNav.vue";
+import MyPage from "@/components/MyPage/MyPage.vue";
+import SettingsTab from "@/components/SettingsTab/SettingsTab.vue";
+
+const router = useRouter();
+const {
+  currentUser,
+  masterQuestions,
+  questionStats,
+  reviewQuestions,
+  bookmarkedQuestions,
+  currentLevel,
+  levelProgress,
+  currentRank,
+  logout,
+  toggleBookmark,
+  fetchAllQuestions,
+  clearSession,
+  fetchQuestions,
+} = useNextNs();
+
+const currentTab = ref("home");
+
+onMounted(() => {
+  fetchAllQuestions();
+});
+
+// ★ モードを指定して演習を開始する
+const startStudy = async (mode: any, year?: string) => {
+  clearSession();
+  if (mode === "random100") {
+    await fetchQuestions({ force: true, mode: "random100" });
+  } else if (mode === "examYear") {
+    await fetchQuestions({ force: true, mode: "examYear", year });
+  } else {
+    await fetchQuestions({ force: true });
+  }
+  router.push("/study");
+};
+</script>
+</file>
+
+<file path="src/views/LoginView/LoginView.ts">
+import { ref } from "vue";
+import {
+  getAuth,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendEmailVerification,
+  signOut,
+} from "firebase/auth";
+import { getFirestore, doc, setDoc } from "firebase/firestore";
+import { useRouter } from "vue-router";
+
+export default function useLoginView() {
+  const router = useRouter();
+  const isLoginMode = ref(true);
+  const email = ref("");
+  const password = ref("");
+  const loading = ref(false);
+
+  const handleSubmit = async () => {
+    if (!email.value || !password.value) return alert("入力してください");
+    loading.value = true;
+    const auth = getAuth();
+    const db = getFirestore();
+
+    try {
+      if (isLoginMode.value) {
+        // --- ログイン ---
+        const userCredential = await signInWithEmailAndPassword(
+          auth,
+          email.value,
+          password.value
+        );
+        const user = userCredential.user;
+
+        if (!user.emailVerified) {
+          // 未認証なら待機画面へ
+          router.push("/verify-email");
+        } else {
+          router.push("/");
+        }
+      } else {
+        // --- 新規登録 ---
+        const userCredential = await createUserWithEmailAndPassword(
+          auth,
+          email.value,
+          password.value
+        );
+        const user = userCredential.user;
+
+        // ユーザー情報保存
+        await setDoc(doc(db, "users", user.uid), {
+          email: email.value,
+          role: "student",
+          createdAt: new Date(),
+        });
+
+        // ★メール送信
+        await sendEmailVerification(user);
+        alert(
+          "確認メールを送信しました。\nメール内のリンクをクリックしてください。"
+        );
+
+        // 待機画面へ
+        router.push("/verify-email");
+      }
+    } catch (e: any) {
+      console.error(e);
+      let msg = "エラーが発生しました";
+      if (e.code === "auth/email-already-in-use")
+        msg = "このメールアドレスは既に登録されています";
+      if (e.code === "auth/weak-password")
+        msg = "パスワードは6文字以上にしてください";
+      if (e.code === "auth/invalid-credential")
+        msg = "メールアドレスまたはパスワードが間違っています";
+      alert(msg);
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  return {
+    isLoginMode,
+    email,
+    password,
+    loading,
+    handleSubmit,
+  };
 }
-.no-scrollbar {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
-</style>
 </file>
 
 <file path="src/views/LoginView/LoginView.vue">
@@ -5537,6 +5435,128 @@ const handleSubmit = async () => {
             {{ isLoginMode ? "アカウント作成はこちら" : "ログインはこちら" }}
           </button>
         </div>
+      </div>
+    </div>
+  </div>
+</template>
+</file>
+
+<file path="src/views/VerifyEmailView/VerifyEmailView.vue">
+<script setup lang="ts">
+import { ref } from "vue";
+import { getAuth, sendEmailVerification, signOut } from "firebase/auth";
+import { useRouter } from "vue-router";
+
+const auth = getAuth();
+const router = useRouter();
+const user = auth.currentUser;
+const loading = ref(false);
+const message = ref("");
+
+// 再送信処理
+const resendEmail = async () => {
+  if (!user) return;
+  loading.value = true;
+  try {
+    await sendEmailVerification(user);
+    message.value = "確認メールを再送信しました。";
+  } catch (e: any) {
+    if (e.code === "auth/too-many-requests") {
+      message.value = "少し時間を置いてから再試行してください。";
+    } else {
+      message.value = "送信に失敗しました。";
+    }
+  } finally {
+    loading.value = false;
+  }
+};
+
+// 「確認しました」ボタン（リロードして状態確認）
+const checkVerification = async () => {
+  if (!user) return;
+  loading.value = true;
+  try {
+    await user.reload(); // Firebaseの状態を最新に更新
+    if (user.emailVerified) {
+      alert("認証を確認しました！");
+      router.push("/");
+    } else {
+      alert(
+        "まだ認証が完了していません。\nメールのリンクをクリックしましたか？"
+      );
+    }
+  } catch (e) {
+    console.error(e);
+  } finally {
+    loading.value = false;
+  }
+};
+
+const handleLogout = async () => {
+  await signOut(auth);
+  router.push("/login");
+};
+</script>
+
+<template>
+  <div
+    class="min-h-screen bg-slate-50 flex items-center justify-center p-6 font-sans"
+  >
+    <div
+      class="max-w-md w-full bg-white rounded-3xl p-8 shadow-sm border border-slate-100 text-center"
+    >
+      <div
+        class="w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center text-3xl mx-auto mb-6"
+      >
+        ✉️
+      </div>
+
+      <h2 class="text-xl font-bold text-slate-800 mb-4">
+        メールアドレスの確認
+      </h2>
+
+      <p class="text-sm text-slate-600 mb-6 leading-relaxed">
+        <strong>{{ user?.email }}</strong> 宛に確認メールを送信しました。<br />
+        メール内のリンクをクリックして、アカウントを有効化してください。
+      </p>
+
+      <div class="space-y-3">
+        <button
+          @click="checkVerification"
+          :disabled="loading"
+          class="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition shadow-lg shadow-blue-200"
+        >
+          {{ loading ? "確認中..." : "認証完了 (アプリへ進む)" }}
+        </button>
+
+        <button
+          @click="resendEmail"
+          :disabled="loading"
+          class="w-full py-3 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 transition"
+        >
+          メールを再送信
+        </button>
+      </div>
+
+      <p
+        v-if="message"
+        class="mt-4 text-xs text-blue-600 font-bold animate-pulse"
+      >
+        {{ message }}
+      </p>
+
+      <div class="mt-8 pt-6 border-t border-slate-100">
+        <p class="text-xs text-slate-400 mb-2">メールが届かない場合</p>
+        <p class="text-[10px] text-slate-400">
+          ・迷惑メールフォルダをご確認ください<br />
+          ・メールアドレスが間違っている場合はログアウトしてやり直してください
+        </p>
+        <button
+          @click="handleLogout"
+          class="mt-4 text-xs text-slate-500 underline hover:text-slate-800"
+        >
+          ログアウト / アドレス変更
+        </button>
       </div>
     </div>
   </div>
@@ -5659,33 +5679,6 @@ service cloud.firestore {
 }
 </file>
 
-<file path="index.html">
-<!DOCTYPE html>
-<html lang="ja">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" href="/logo.png" />
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
-    />
-
-    <meta name="theme-color" content="#ffffff" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-
-    <meta name="apple-mobile-web-app-title" content="NextNs" />
-    <link rel="apple-touch-icon" href="/logo.png" />
-
-    <title>NextNs</title>
-  </head>
-  <body>
-    <div id="app"></div>
-    <script type="module" src="/src/main.ts"></script>
-  </body>
-</html>
-</file>
-
 <file path="package.json">
 {
   "name": "next-ns",
@@ -5726,6 +5719,121 @@ service cloud.firestore {
 }
 </file>
 
+<file path="src/router/index.ts">
+import { createRouter, createWebHistory } from "vue-router";
+import { getAuth, onAuthStateChanged, type User } from "firebase/auth";
+import HomeView from "../views/HomeView/HomeView.vue";
+import LoginView from "../views/LoginView/LoginView.vue";
+import VerifyEmailView from "../views/VerifyEmailView/VerifyEmailView.vue";
+// ★ 演習画面をインポート
+import StudyView from "../views/StudyView/StudyView.vue";
+import ReviewView from "../views/ReviewView/ReviewView.vue";
+
+// 仮のコンポーネント。中身がないとエラーになるため、後ほどReviewView.vueを作成してください。
+const Placeholder = {
+  template: '<div class="p-10 text-center">復習画面を作成中です</div>',
+};
+
+const router = createRouter({
+  history: createWebHistory(import.meta.env.BASE_URL),
+  routes: [
+    {
+      path: "/",
+      name: "home",
+      component: HomeView,
+      meta: { requiresAuth: true },
+    },
+    {
+      path: "/login",
+      name: "login",
+      component: LoginView,
+      meta: { public: true },
+    },
+    {
+      path: "/verify-email",
+      name: "verify-email",
+      component: VerifyEmailView,
+      meta: { requiresAuth: true },
+    },
+    // ★ 演習画面を組み込み
+    {
+      path: "/study",
+      name: "study",
+      component: StudyView,
+      meta: { requiresAuth: true },
+    },
+    // ★ 復習画面（次はこれを作成します）
+    {
+      path: "/review",
+      name: "review",
+      component: ReviewView, // ★ Placeholder から ReviewView に変更
+      meta: { requiresAuth: true },
+    },
+  ],
+});
+
+router.beforeEach(async (to, from, next) => {
+  const auth = getAuth();
+  const currentUser = await new Promise<User | null>((resolve) => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      unsubscribe();
+      resolve(user);
+    });
+  });
+
+  const requiresAuth = to.matched.some((record) => record.meta.requiresAuth);
+
+  if (requiresAuth && !currentUser) {
+    next("/login");
+  } else if (
+    currentUser &&
+    !currentUser.emailVerified &&
+    to.name !== "verify-email"
+  ) {
+    next("/verify-email");
+  } else if (
+    currentUser &&
+    currentUser.emailVerified &&
+    to.name === "verify-email"
+  ) {
+    next("/");
+  } else if (to.path === "/login" && currentUser && currentUser.emailVerified) {
+    next("/");
+  } else {
+    next();
+  }
+});
+
+export default router;
+</file>
+
+<file path="index.html">
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" href="/logo.png?v=2" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=2" />
+
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+
+    <meta name="theme-color" content="#ffffff" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+
+    <meta name="apple-mobile-web-app-title" content="NextNs" />
+    <title>NextNs</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
+</file>
+
 <file path="vite.config.ts">
 import { fileURLToPath, URL } from "node:url";
 
@@ -5741,11 +5849,11 @@ export default defineConfig({
       registerType: "autoUpdate",
       includeAssets: ["favicon.ico", "apple-touch-icon.png", "logo.png"],
       manifest: {
-        // ★ここを完全にNextNsに変更
         name: "NextNs - 看護師国家試験対策",
         short_name: "NextNs",
+        // 内容を微修正してマニフェストの更新を促す
         description:
-          "看護師国家試験対策のための学習支援アプリ。過去問演習、成績管理、AI解説機能付き。",
+          "看護師国家試験対策のための学習支援アプリ。最新の過去問とAI解説を搭載。",
         theme_color: "#ffffff",
         background_color: "#ffffff",
         display: "standalone",
@@ -5779,19 +5887,19 @@ export default defineConfig({
 </file>
 
 <file path=".firebase/hosting.ZGlzdA.cache">
-sw.js,1767286110862,ec1944b7a7aec87807f9d3f37cef24af9bb0b4d5dfaf7bb36fb024c003fb2c68
-registerSW.js,1767286110208,5b6445b5215737c53ef0d379c151d57de165a056de2d1c5812ed614f158ebcbd
-manifest.webmanifest,1767286110208,38b668f6b4595ac2fbe3c9a094b41388d52ce760fca354962834270d024aa479
-index.html,1767286110208,414d3e5da1b81174233750a4bc967c62fab43ae5d74c7555b4e11c1e134e093f
-workbox-8c29f6e4.js,1767286110862,c1360d97831a7585ba8f5c2631c0b3b78258637b50e1329c8f7fc0837604e59a
-assets/index-CTPBttxs.css,1767286110208,af264dc80aa177d958aadba69f8e4799f58dbdcdc06708e63dca1e11c0df40f7
-firebase-messaging-sw.js,1767286110069,8d8cf84c873b19b20b1328e697daeb3ef8d264cfe3e53683cd4da02a30ee90b1
-presentation.html,1767286110069,ae3b4772b21fdc1fc26348c7df9444275707a36e81107e5ccf9737ca72ec523d
-logo.png,1767286110069,121b31ad4cdaa0c40de36dfa9392079ab01285a12f2c6db18bfc5b935cefa843
-pwa-192x192.png,1767286110070,121b31ad4cdaa0c40de36dfa9392079ab01285a12f2c6db18bfc5b935cefa843
-pwa-512x512.png,1767286110070,121b31ad4cdaa0c40de36dfa9392079ab01285a12f2c6db18bfc5b935cefa843
-apple-touch-icon.png,1767286110069,121b31ad4cdaa0c40de36dfa9392079ab01285a12f2c6db18bfc5b935cefa843
-assets/index-BxhacR-g.js,1767286110208,c25fe8f85007a749694824074bfce14e3d1073ac6d1917eb56ec598df5528d06
+registerSW.js,1767344786148,5b6445b5215737c53ef0d379c151d57de165a056de2d1c5812ed614f158ebcbd
+sw.js,1767344786808,da1602d2a0030de848ccdcbb0b0a5ebe8a85aec732200fa6420fc823472bfc35
+index.html,1767344786148,79445c3b76c1b293ea38936f8728011c68663afef944f5776e2a8a86532b2294
+firebase-messaging-sw.js,1767344786006,8d8cf84c873b19b20b1328e697daeb3ef8d264cfe3e53683cd4da02a30ee90b1
+assets/index-BtPhnsmd.css,1767344786147,278faa164cecb4b106fa072511afcee9b0326a98c39273c8d836a82548322846
+workbox-8c29f6e4.js,1767344786809,c1360d97831a7585ba8f5c2631c0b3b78258637b50e1329c8f7fc0837604e59a
+manifest.webmanifest,1767344786148,e23c66a17eae9a20ef9043e61f89a8261cc0022c603416c0dee217ad5189f7e6
+presentation.html,1767344786006,ae3b4772b21fdc1fc26348c7df9444275707a36e81107e5ccf9737ca72ec523d
+pwa-192x192.png,1767344786007,121b31ad4cdaa0c40de36dfa9392079ab01285a12f2c6db18bfc5b935cefa843
+pwa-512x512.png,1767344786007,121b31ad4cdaa0c40de36dfa9392079ab01285a12f2c6db18bfc5b935cefa843
+logo.png,1767344786006,121b31ad4cdaa0c40de36dfa9392079ab01285a12f2c6db18bfc5b935cefa843
+apple-touch-icon.png,1767344786005,121b31ad4cdaa0c40de36dfa9392079ab01285a12f2c6db18bfc5b935cefa843
+assets/index-C86fCZVs.js,1767344786148,c0e25e85361a26e066a0ec41d738f233ad8cc9f73ae6b8132a6264d6d0334199
 </file>
 
 </files>

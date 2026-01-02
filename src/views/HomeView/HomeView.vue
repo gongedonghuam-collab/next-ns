@@ -1,422 +1,264 @@
-<script setup lang="ts">
-import { onMounted, computed, ref, watch } from "vue";
-import { useNextNs } from "@/composables/useNextNs";
-import QuizCard from "@/components/QuizCard/QuizCard.vue";
-import TheBottomNav from "@/components/TheBottomNav/TheBottomNav.vue";
-import SettingsTab from "@/components/SettingsTab/SettingsTab.vue";
-import MyPage from "@/components/MyPage/MyPage.vue";
-import JsonUploader from "@/components/JsonUploader.vue";
-import type { Question } from "@/types";
-
-const {
-  questions,
-  reviewQuestions,
-  bookmarkedQuestions,
-  loading,
-  fetchQuestions,
-  fetchReviewQuestions,
-  fetchBookmarks,
-  currentUser,
-  logout,
-  saveAnswer,
-  todayLogCount,
-  availableTags,
-  currentLevel,
-  selectedPeriod,
-  clearSession,
-  currentSessionIndex,
-} = useNextNs();
-
-const currentTab = ref("home");
-const studyMode = ref<"daily" | "review" | "bookmark">("daily");
-const selectedTag = ref<string | null>(null);
-
-// ★追加: 復習モード用の絞り込みフィルター
-const reviewFilter = ref<"all" | "incorrect" | "ng" | "so-so">("all");
-
-onMounted(() => {
-  fetchQuestions();
-});
-
-watch(studyMode, (newMode) => {
-  if (newMode === "daily") fetchQuestions();
-  if (newMode === "review") fetchReviewQuestions();
-  if (newMode === "bookmark") fetchBookmarks();
-  selectedTag.value = null;
-  reviewFilter.value = "all"; // モード変更時にフィルターリセット
-});
-
-const onAnswer = async (
-  question: Question,
-  isCorrect: boolean,
-  choiceIndex: number,
-  confidence: "ok" | "so-so" | "ng"
-) => {
-  await saveAnswer(question, choiceIndex, isCorrect, confidence);
-};
-
-const handleReset = () => {
-  if (confirm("現在の進行状況をリセットして、新しい問題をロードしますか？")) {
-    clearSession();
-    fetchQuestions(true);
-  }
-};
-
-const dailyGoal = 10;
-const progressPercent = computed(() =>
-  Math.min((todayLogCount.value / dailyGoal) * 100, 100)
-);
-
-const displayQuestions = computed(() => {
-  let list: Question[] = [];
-
-  if (studyMode.value === "daily") {
-    list = questions.value;
-  } else if (studyMode.value === "review") {
-    list = reviewQuestions.value;
-
-    // ★復習モードの絞り込みロジック
-    if (reviewFilter.value === "incorrect") {
-      // 不正解だったもの
-      list = list.filter((q) => q.lastResult && !q.lastResult.isCorrect);
-    } else if (reviewFilter.value === "ng") {
-      // 自信なし(❌)としたもの
-      list = list.filter((q) => q.lastResult?.confidence === "ng");
-    } else if (reviewFilter.value === "so-so") {
-      // あやふや(🔺)としたもの
-      list = list.filter((q) => q.lastResult?.confidence === "so-so");
-    }
-  } else if (studyMode.value === "bookmark") {
-    list = bookmarkedQuestions.value;
-  }
-
-  // タグフィルター（全モード共通）
-  if (selectedTag.value) {
-    list = list.filter((q) => q.tags.includes(selectedTag.value!));
-  }
-
-  return list;
-});
-
-const modeTitle = computed(() => {
-  if (studyMode.value === "daily") return "演習";
-  if (studyMode.value === "review") return "復習";
-  return "保存";
-});
-</script>
-
 <template>
-  <div class="min-h-screen bg-[#F8FAFC] pb-24 font-sans">
+  <div class="h-screen flex flex-col bg-slate-50 font-sans">
     <header
-      class="fixed top-0 left-0 right-0 z-40 bg-white/90 backdrop-blur-md border-b border-slate-100 h-16"
+      class="bg-white px-6 py-6 shadow-sm border-b border-slate-100 flex justify-between items-center flex-shrink-0 z-30"
     >
-      <div
-        class="max-w-lg mx-auto px-5 h-full flex justify-between items-center"
+      <h1
+        class="text-2xl font-black text-slate-800 tracking-tight flex items-center gap-2"
       >
-        <h1
-          class="font-black text-xl tracking-tight text-slate-800 flex items-center gap-1"
-        >
-          <span class="text-blue-600 text-2xl">⚡️</span> NextNs
-        </h1>
-        <div class="flex items-center gap-3">
-          <div
-            class="bg-indigo-100 text-indigo-700 px-2 py-1 rounded-lg text-[10px] font-black border border-indigo-200"
-          >
-            Lv.{{ currentLevel }}
-          </div>
-          <button
-            @click="logout"
-            class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 hover:bg-slate-200 transition"
-          >
-            🚪
-          </button>
-        </div>
-      </div>
+        <span class="bg-blue-600 text-white p-1.5 rounded-xl">Next</span>Ns
+      </h1>
+      <button
+        @click="logout"
+        class="text-xs font-bold text-slate-400 hover:text-slate-600 transition"
+      >
+        ログアウト
+      </button>
     </header>
 
-    <main class="max-w-lg mx-auto px-5 pt-24">
-      <div v-if="currentTab === 'home'">
-        <div class="flex bg-slate-100 p-1 rounded-xl mb-4 gap-1">
-          <button
-            @click="studyMode = 'daily'"
-            class="flex-1 py-2 rounded-lg text-[10px] font-bold transition-all duration-200 whitespace-nowrap"
-            :class="
-              studyMode === 'daily'
-                ? 'bg-white text-blue-600 shadow-sm'
-                : 'text-slate-400 hover:text-slate-600'
-            "
-          >
-            🔥 演習
-          </button>
-          <button
-            @click="studyMode = 'review'"
-            class="flex-1 py-2 rounded-lg text-[10px] font-bold transition-all duration-200 whitespace-nowrap"
-            :class="
-              studyMode === 'review'
-                ? 'bg-white text-orange-500 shadow-sm'
-                : 'text-slate-400 hover:text-slate-600'
-            "
-          >
-            💪 復習
-          </button>
-          <button
-            @click="studyMode = 'bookmark'"
-            class="flex-1 py-2 rounded-lg text-[10px] font-bold transition-all duration-200 whitespace-nowrap"
-            :class="
-              studyMode === 'bookmark'
-                ? 'bg-white text-teal-600 shadow-sm'
-                : 'text-slate-400 hover:text-slate-600'
-            "
-          >
-            ★ 保存
-          </button>
-        </div>
-
-        <div
-          v-if="studyMode === 'daily'"
-          class="flex justify-between items-center mb-4"
-        >
-          <div class="flex gap-2">
-            <button
-              @click="selectedPeriod = 'all'"
-              class="px-3 py-1 rounded-full text-xs font-bold border transition"
-              :class="
-                selectedPeriod === 'all'
-                  ? 'bg-slate-800 text-white'
-                  : 'bg-white text-slate-500'
-              "
-            >
-              すべて
-            </button>
-            <button
-              @click="selectedPeriod = 'am'"
-              class="px-3 py-1 rounded-full text-xs font-bold border transition"
-              :class="
-                selectedPeriod === 'am'
-                  ? 'bg-slate-800 text-white'
-                  : 'bg-white text-slate-500'
-              "
-            >
-              午前
-            </button>
-            <button
-              @click="selectedPeriod = 'pm'"
-              class="px-3 py-1 rounded-full text-xs font-bold border transition"
-              :class="
-                selectedPeriod === 'pm'
-                  ? 'bg-slate-800 text-white'
-                  : 'bg-white text-slate-500'
-              "
-            >
-              午後
-            </button>
-          </div>
-          <button
-            @click="handleReset"
-            class="text-[10px] text-red-400 underline"
-          >
-            進行リセット
-          </button>
-        </div>
-
-        <div v-if="studyMode === 'review'" class="mb-4">
-          <div class="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
-            <button
-              @click="reviewFilter = 'all'"
-              class="px-3 py-1.5 rounded-lg text-xs font-bold border transition whitespace-nowrap"
-              :class="
-                reviewFilter === 'all'
-                  ? 'bg-orange-500 text-white border-orange-500'
-                  : 'bg-white text-slate-500'
-              "
-            >
-              すべて
-            </button>
-            <button
-              @click="reviewFilter = 'incorrect'"
-              class="px-3 py-1.5 rounded-lg text-xs font-bold border transition whitespace-nowrap"
-              :class="
-                reviewFilter === 'incorrect'
-                  ? 'bg-slate-700 text-white border-slate-700'
-                  : 'bg-white text-slate-500'
-              "
-            >
-              不正解のみ
-            </button>
-            <button
-              @click="reviewFilter = 'ng'"
-              class="px-3 py-1.5 rounded-lg text-xs font-bold border transition whitespace-nowrap"
-              :class="
-                reviewFilter === 'ng'
-                  ? 'bg-red-500 text-white border-red-500'
-                  : 'bg-white text-slate-500'
-              "
-            >
-              ❌ 自信なし
-            </button>
-            <button
-              @click="reviewFilter = 'so-so'"
-              class="px-3 py-1.5 rounded-lg text-xs font-bold border transition whitespace-nowrap"
-              :class="
-                reviewFilter === 'so-so'
-                  ? 'bg-yellow-500 text-white border-yellow-500'
-                  : 'bg-white text-slate-500'
-              "
-            >
-              🔺 あやふや
-            </button>
-          </div>
-        </div>
-
-        <div class="flex gap-2 overflow-x-auto pb-4 no-scrollbar mb-2">
-          <button
-            @click="selectedTag = null"
-            class="whitespace-nowrap px-4 py-1.5 rounded-full text-xs font-bold border transition-all"
-            :class="
-              selectedTag === null
-                ? 'bg-slate-800 text-white border-slate-800'
-                : 'bg-white text-slate-500 border-slate-200'
-            "
-          >
-            すべて
-          </button>
-          <button
-            v-for="tag in availableTags"
-            :key="tag"
-            @click="selectedTag = tag"
-            class="whitespace-nowrap px-4 py-1.5 rounded-full text-xs font-bold border transition-all"
-            :class="
-              selectedTag === tag
-                ? 'bg-blue-500 text-white border-blue-500'
-                : 'bg-white text-slate-500 border-slate-200'
-            "
-          >
-            #{{ tag }}
-          </button>
-        </div>
-
-        <div
-          v-if="loading"
-          class="flex flex-col items-center justify-center py-20"
-        >
+    <main class="flex-1 overflow-y-auto no-scrollbar pb-32">
+      <div class="max-w-md mx-auto px-6 mt-8 space-y-6">
+        <div v-if="currentTab === 'home'" class="space-y-6 animate-fade-in">
           <div
-            class="animate-spin w-10 h-10 border-4 border-t-transparent rounded-full mb-4"
-            :class="
-              studyMode === 'review' ? 'border-orange-500' : 'border-blue-600'
-            "
-          ></div>
-          <p class="text-xs font-bold text-slate-400 animate-pulse">
-            読み込み中...
-          </p>
-        </div>
-
-        <div v-else>
-          <div
-            v-if="studyMode === 'daily'"
-            class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 mb-6"
+            class="bg-blue-600 rounded-[32px] p-6 text-white shadow-xl shadow-blue-200"
           >
-            <div
-              class="flex justify-between text-xs font-bold text-slate-500 mb-2"
-            >
-              <span>今日の目標</span>
-              <span>{{ todayLogCount }} / {{ dailyGoal }}問</span>
+            <div class="flex justify-between items-start mb-6">
+              <div>
+                <p
+                  class="text-blue-100 text-[10px] font-bold uppercase tracking-widest mb-1"
+                >
+                  Question Database
+                </p>
+                <div class="text-4xl font-black">
+                  {{ masterQuestions.length
+                  }}<span class="text-lg ml-1 opacity-70">問</span>
+                </div>
+              </div>
+              <div class="bg-white/20 p-3 rounded-2xl backdrop-blur-md">📊</div>
             </div>
-            <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+            <div class="flex justify-between text-xs font-bold mb-2">
+              <span>Rank: {{ currentRank }}</span>
+              <span>Lv.{{ currentLevel }}</span>
+            </div>
+            <div class="h-2 bg-white/20 rounded-full overflow-hidden">
               <div
-                class="bg-blue-500 h-full rounded-full transition-all duration-500"
-                :style="{ width: `${progressPercent}%` }"
+                class="h-full bg-white transition-all duration-1000"
+                :style="{ width: levelProgress + '%' }"
               ></div>
             </div>
           </div>
 
-          <div class="flex justify-between items-end mb-6 px-1">
-            <h2 class="font-bold text-xl text-slate-800">
-              <span v-if="selectedTag" class="text-blue-500 mr-2"
-                >#{{ selectedTag }}</span
-              >
-              <span v-else>{{ modeTitle }}</span>
-            </h2>
-            <span
-              class="text-xs font-bold px-3 py-1 rounded-full border shadow-sm bg-white text-slate-500"
+          <div class="grid grid-cols-1 gap-4">
+            <div
+              class="bg-white rounded-3xl p-2 border border-slate-100 shadow-sm space-y-1"
             >
-              残り {{ displayQuestions.length }}問
-            </span>
+              <p
+                class="text-[10px] font-black text-slate-400 px-4 pt-2 uppercase tracking-widest"
+              >
+                Training Mode
+              </p>
+              <button
+                @click="startStudy({ mode: 'random' })"
+                class="w-full flex items-center gap-4 p-4 hover:bg-slate-50 rounded-2xl transition group"
+              >
+                <span class="text-2xl group-hover:scale-110 transition"
+                  >🎲</span
+                >
+                <div class="text-left">
+                  <div class="font-black text-slate-800 text-sm">
+                    全件ランダム
+                  </div>
+                  <p class="text-[9px] text-slate-400">
+                    登録されているすべての問題から出題
+                  </p>
+                </div>
+              </button>
+              <button
+                @click="startStudy({ mode: 'random100' })"
+                class="w-full flex items-center gap-4 p-4 hover:bg-slate-50 rounded-2xl transition group"
+              >
+                <span class="text-2xl group-hover:scale-110 transition"
+                  >💯</span
+                >
+                <div class="text-left">
+                  <div class="font-black text-slate-800 text-sm">
+                    ランダム100問
+                  </div>
+                  <p class="text-[9px] text-slate-400">
+                    実力テストに最適。100問をピックアップ
+                  </p>
+                </div>
+              </button>
+            </div>
+
+            <button
+              @click="$router.push('/review')"
+              class="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm text-left group transition hover:border-orange-200 active:scale-95 flex items-center gap-4"
+            >
+              <div class="text-2xl group-hover:scale-110 transition">🔄</div>
+              <div>
+                <div class="font-black text-slate-800">復習モード</div>
+                <p class="text-[9px] text-slate-400">
+                  苦手集中 ({{ reviewQuestions.length }}問)
+                </p>
+              </div>
+            </button>
           </div>
 
-          <div v-if="displayQuestions.length > 0">
-            <template v-if="studyMode === 'daily'">
-              <QuizCard
-                v-if="displayQuestions[0]"
-                :key="displayQuestions[0].id"
-                :question="displayQuestions[0]"
-                :index="currentSessionIndex"
-                @answer="
-                  (isCorrect, idx, confidence) =>
-                    onAnswer(displayQuestions[0], isCorrect, idx, confidence)
-                "
-              />
-            </template>
-            <template v-else>
-              <QuizCard
-                v-for="(q, index) in displayQuestions"
+          <section
+            class="bg-white rounded-3xl p-5 border border-slate-100 shadow-sm"
+          >
+            <h2
+              class="font-bold text-slate-800 mb-4 flex items-center gap-2 text-sm"
+            >
+              📂 試験回別に解く
+            </h2>
+            <div class="space-y-3">
+              <div
+                v-for="stat in questionStats"
+                :key="stat.year"
+                class="p-4 bg-slate-50 rounded-2xl border border-slate-100"
+              >
+                <div class="flex justify-between items-center mb-3">
+                  <span class="font-black text-slate-800">{{ stat.year }}</span>
+                  <span class="text-[10px] font-bold text-slate-400"
+                    >合計 {{ stat.total }}問</span
+                  >
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                  <button
+                    @click="
+                      startStudy({
+                        mode: 'examYear',
+                        year: stat.year,
+                        period: 'am',
+                      })
+                    "
+                    class="py-2 bg-white border border-blue-100 rounded-xl text-[10px] font-black text-blue-600 hover:bg-blue-600 hover:text-white transition"
+                  >
+                    午前 ({{ stat.am }})
+                  </button>
+                  <button
+                    @click="
+                      startStudy({
+                        mode: 'examYear',
+                        year: stat.year,
+                        period: 'pm',
+                      })
+                    "
+                    class="py-2 bg-white border border-blue-100 rounded-xl text-[10px] font-black text-blue-600 hover:bg-blue-600 hover:text-white transition"
+                  >
+                    午後 ({{ stat.pm }})
+                  </button>
+                </div>
+              </div>
+            </div>
+          </section>
+          <JsonUploader />
+        </div>
+
+        <div
+          v-else-if="currentTab === 'history'"
+          class="animate-fade-in space-y-6"
+        >
+          <MyPage />
+          <div
+            class="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm"
+          >
+            <h2 class="font-black text-slate-800 mb-4 flex items-center gap-2">
+              🔖 保存した問題 ({{ bookmarkedQuestions.length }})
+            </h2>
+            <div
+              v-if="bookmarkedQuestions.length === 0"
+              class="text-center py-12 text-slate-400 text-xs font-bold bg-slate-50/50 rounded-2xl border border-dashed"
+            >
+              保存された問題はまだありません
+            </div>
+            <div v-else class="space-y-4">
+              <div
+                v-for="q in bookmarkedQuestions"
                 :key="q.id"
-                :question="q"
-                :index="index"
-                @answer="
-                  (isCorrect, idx, confidence) =>
-                    onAnswer(q, isCorrect, idx, confidence)
-                "
-              />
-            </template>
-          </div>
-
-          <div v-else class="text-center py-20 text-slate-400">
-            <template v-if="studyMode === 'review'">
-              <p class="text-4xl mb-4">🎉</p>
-              <p class="font-bold">素晴らしい！</p>
-              <p class="text-xs mt-2">
-                復習が必要な問題はありません<br />（または条件に合う問題がありません）
-              </p>
-            </template>
-            <template v-else-if="studyMode === 'daily'">
-              <p class="text-4xl mb-4">🎉</p>
-              <p class="font-bold">問題はありません</p>
-              <p class="text-xs mt-2">
-                すべての問題を解き終えました！<br />リセットして再挑戦できます。
-              </p>
-            </template>
-            <template v-else>
-              <p class="text-4xl mb-4">📭</p>
-              <p class="font-bold">問題が見つかりません</p>
-            </template>
+                class="p-4 bg-slate-50 rounded-2xl border border-slate-100 relative group hover:border-blue-200 transition"
+              >
+                <div
+                  class="flex justify-between text-[9px] font-bold text-slate-400 mb-1"
+                >
+                  <span>{{ q.examYear }} {{ q.questionNumber }}</span>
+                  <button
+                    @click="toggleBookmark(q)"
+                    class="text-blue-500 hover:text-blue-700 font-bold"
+                  >
+                    解除
+                  </button>
+                </div>
+                <p
+                  class="text-xs font-bold text-slate-700 leading-relaxed line-clamp-3"
+                >
+                  {{ q.text }}
+                </p>
+              </div>
+            </div>
           </div>
         </div>
 
-        <JsonUploader />
-      </div>
-
-      <div v-else-if="currentTab === 'history'">
-        <MyPage />
-      </div>
-
-      <div v-else-if="currentTab === 'settings'">
-        <SettingsTab :currentUser="currentUser" />
+        <div v-else-if="currentTab === 'settings'" class="animate-fade-in">
+          <SettingsTab :currentUser="currentUser" />
+        </div>
       </div>
     </main>
 
-    <TheBottomNav
-      :currentTab="currentTab"
-      @update:currentTab="currentTab = $event"
-    />
+    <TheBottomNav v-model:currentTab="currentTab" class="z-40" />
   </div>
 </template>
 
-<style>
-.no-scrollbar::-webkit-scrollbar {
-  display: none;
-}
-.no-scrollbar {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
-</style>
+<script setup lang="ts">
+import { ref, onMounted } from "vue";
+import { useRouter } from "vue-router";
+import { useNextNs } from "@/composables/useNextNs";
+import JsonUploader from "@/components/JsonUploader.vue";
+import TheBottomNav from "@/components/TheBottomNav/TheBottomNav.vue";
+import MyPage from "@/components/MyPage/MyPage.vue";
+import SettingsTab from "@/components/SettingsTab/SettingsTab.vue";
+
+const router = useRouter();
+const {
+  currentUser,
+  masterQuestions,
+  questionStats,
+  reviewQuestions,
+  bookmarkedQuestions,
+  currentLevel,
+  levelProgress,
+  currentRank,
+  logout,
+  toggleBookmark,
+  fetchAllQuestions,
+  clearSession,
+  fetchQuestions,
+  selectedPeriod,
+} = useNextNs();
+
+const currentTab = ref("home");
+
+onMounted(() => {
+  fetchAllQuestions();
+});
+
+const startStudy = async (options: {
+  mode: any;
+  year?: string;
+  period?: "am" | "pm";
+}) => {
+  clearSession();
+  // 回指定の場合は period をセットする
+  if (options.period) selectedPeriod.value = options.period;
+
+  await fetchQuestions({
+    force: true,
+    mode: options.mode,
+    year: options.year,
+    period: options.period,
+  });
+  router.push("/study");
+};
+</script>

@@ -15,239 +15,245 @@ import {
 } from "firebase/firestore";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import axios from "axios";
 import type { Question, User, StudyLog } from "@/types";
 
-// --- ローカルストレージのキー ---
-const STORAGE_KEY_SESSION = "nextns_session_questions"; // 問題リスト
-const STORAGE_KEY_INDEX = "nextns_session_index"; // ★追加: 何問目まで解いたか
+const STORAGE_KEY_SESSION = "nextns_session_questions";
+const STORAGE_KEY_INDEX = "nextns_session_index";
+const STORAGE_KEY_PERIOD = "nextns_session_period";
 
-// グローバルステート
 const currentUser = ref<User | null>(null);
+const masterQuestions = ref<Question[]>([]);
 const questions = ref<Question[]>([]);
 const reviewQuestions = ref<Question[]>([]);
 const bookmarkedQuestions = ref<Question[]>([]);
 const bookmarkedIds = ref<Set<string>>(new Set());
 const studyLogs = ref<StudyLog[]>([]);
 const loading = ref(false);
-const clearedQuestionIds = ref<Set<string>>(new Set());
 
-// ★追加: 現在のセッションでの回答数（Q数カウント用）
 const currentSessionIndex = ref(0);
-
 const selectedPeriod = ref<"all" | "am" | "pm">("all");
 
-const todayLogCount = computed(() => {
-  const startOfDay = new Date();
-  startOfDay.setHours(0, 0, 0, 0);
-  return studyLogs.value.filter((log) => {
-    const logDate =
-      log.createdAt instanceof Date
-        ? log.createdAt
-        : (log.createdAt as any)?.toDate
-        ? (log.createdAt as any).toDate()
-        : new Date(log.createdAt);
-    return logDate >= startOfDay;
-  }).length;
-});
-
-const availableTags = computed(() => {
-  const tags = new Set<string>();
-  const source = [
-    ...questions.value,
-    ...reviewQuestions.value,
-    ...bookmarkedQuestions.value,
-  ];
-  source.forEach((q) => {
-    if (q.tags && Array.isArray(q.tags)) {
-      q.tags.forEach((t) => tags.add(t));
-    }
-  });
-  return Array.from(tags);
-});
-
-const totalExp = computed(() => {
-  return studyLogs.value.reduce((total, log) => {
-    return total + (log.isCorrect ? 20 : 5);
-  }, 0);
-});
-
-const currentLevel = computed(() => {
-  return Math.floor(totalExp.value / 100) + 1;
-});
-
-const levelProgress = computed(() => {
-  return totalExp.value % 100;
-});
-
+const totalExp = computed(() =>
+  studyLogs.value.reduce((t, log) => t + (log.isCorrect ? 20 : 5), 0)
+);
+const currentLevel = computed(() => Math.floor(totalExp.value / 100) + 1);
+const levelProgress = computed(() => totalExp.value % 100);
 const currentRank = computed(() => {
   const lv = currentLevel.value;
   if (lv < 5) return "新人ナースの卵";
   if (lv < 10) return "駆け出しナース";
   if (lv < 20) return "中堅ナース";
-  if (lv < 50) return "ベテランナース";
-  return "看護師長クラス";
+  return "ベテランナース";
+});
+
+const questionStats = computed(() => {
+  const stats: Record<string, { am: number; pm: number; total: number }> = {};
+  masterQuestions.value.forEach((q) => {
+    const year = q.examYear || "不明";
+    if (!stats[year]) stats[year] = { am: 0, pm: 0, total: 0 };
+    stats[year].total++;
+    if (q.questionNumber?.includes("午前")) stats[year].am++;
+    else if (q.questionNumber?.includes("午後")) stats[year].pm++;
+  });
+  return Object.entries(stats)
+    .map(([year, data]) => ({ year, ...data }))
+    .sort((a, b) => b.year.localeCompare(a.year, undefined, { numeric: true }));
 });
 
 export function useNextNs() {
   const aiResponse = ref("");
   const isAiThinking = ref(false);
 
-  // --- 中断セーブ・復帰機能 ---
   const saveSession = () => {
     if (questions.value.length > 0) {
       localStorage.setItem(
         STORAGE_KEY_SESSION,
         JSON.stringify(questions.value)
       );
-      // ★現在のカウント数も保存
       localStorage.setItem(
         STORAGE_KEY_INDEX,
         String(currentSessionIndex.value)
       );
+      localStorage.setItem(STORAGE_KEY_PERIOD, selectedPeriod.value);
     }
   };
 
-  const clearSession = () => {
-    localStorage.removeItem(STORAGE_KEY_SESSION);
-    localStorage.removeItem(STORAGE_KEY_INDEX);
-    questions.value = [];
-    currentSessionIndex.value = 0; // リセット
-  };
-
   const restoreSession = () => {
-    const savedQuestions = localStorage.getItem(STORAGE_KEY_SESSION);
-    const savedIndex = localStorage.getItem(STORAGE_KEY_INDEX);
-
-    if (savedQuestions) {
+    const saved = localStorage.getItem(STORAGE_KEY_SESSION);
+    const idx = localStorage.getItem(STORAGE_KEY_INDEX);
+    const prd = localStorage.getItem(STORAGE_KEY_PERIOD);
+    if (saved && idx) {
       try {
-        questions.value = JSON.parse(savedQuestions);
-        // ★保存されていたカウント数を復元
-        if (savedIndex) {
-          currentSessionIndex.value = parseInt(savedIndex, 10);
-        }
-        console.log("🔄 前回のセッションを復元しました");
+        questions.value = JSON.parse(saved);
+        currentSessionIndex.value = parseInt(idx, 10);
+        if (prd) selectedPeriod.value = prd as any;
         return true;
       } catch (e) {
-        console.error("セッション復元エラー", e);
         return false;
       }
     }
     return false;
   };
 
-  // --- ブックマーク機能 ---
-  const toggleBookmark = async (question: Question) => {
-    let userId = currentUser.value?.uid;
-    if (!userId) {
-      const user = auth.currentUser;
-      if (user) {
-        userId = user.uid;
-        currentUser.value = {
-          uid: user.uid,
-          email: user.email || "",
-          role: "student",
-          createdAt: new Date(),
-        };
-      } else {
-        alert("ログインしてください");
-        return;
-      }
-    }
+  const clearSession = () => {
+    localStorage.removeItem(STORAGE_KEY_SESSION);
+    localStorage.removeItem(STORAGE_KEY_INDEX);
+    localStorage.removeItem(STORAGE_KEY_PERIOD);
+    currentSessionIndex.value = 0;
+  };
 
-    if (bookmarkedIds.value.has(question.id)) {
-      bookmarkedIds.value.delete(question.id);
-      bookmarkedQuestions.value = bookmarkedQuestions.value.filter(
-        (q) => q.id !== question.id
+  const fetchAllQuestions = async () => {
+    if (masterQuestions.value.length > 0) return;
+    loading.value = true;
+    try {
+      const q = query(collection(db, "questions"), limit(5000));
+      const snap = await getDocs(q);
+      masterQuestions.value = snap.docs.map(
+        (d) => ({ id: d.id, ...d.data() } as Question)
       );
-      try {
-        const q = query(
-          collection(db, "bookmarks"),
-          where("userId", "==", userId),
-          where("questionId", "==", question.id)
-        );
-        const snap = await getDocs(q);
-        snap.forEach(async (d) => await deleteDoc(d.ref));
-      } catch (e) {
-        console.error(e);
-      }
-    } else {
-      bookmarkedIds.value.add(question.id);
-      bookmarkedQuestions.value.unshift(question);
-      try {
-        await addDoc(collection(db, "bookmarks"), {
-          userId: userId,
-          questionId: question.id,
-          question: question,
-          createdAt: serverTimestamp(),
-        });
-      } catch (e) {
-        console.error(e);
-        bookmarkedIds.value.delete(question.id);
-      }
+    } finally {
+      loading.value = false;
     }
+  };
+
+  const fetchReviewQuestions = async () => {
+    if (!currentUser.value) return;
+    const q = query(
+      collection(db, "study_logs"),
+      where("userId", "==", currentUser.value.uid),
+      limit(1000)
+    );
+    const snap = await getDocs(q);
+    const logs = snap.docs.map((d) => d.data() as StudyLog);
+    const reviewMap = new Map<string, Question>();
+    logs.sort(
+      (a, b) => (a.createdAt?.toDate?.() || 0) - (b.createdAt?.toDate?.() || 0)
+    );
+    logs.forEach((log) => {
+      if (!log.question?.id) return;
+      if (!log.isCorrect || log.confidence !== "ok") {
+        reviewMap.set(log.question.id, {
+          ...log.question,
+          lastResult: { isCorrect: log.isCorrect, confidence: log.confidence },
+        });
+      } else {
+        reviewMap.delete(log.question.id);
+      }
+    });
+    reviewQuestions.value = Array.from(reviewMap.values()).reverse();
+  };
+
+  const fetchHistory = async () => {
+    if (!currentUser.value) return;
+    const q = query(
+      collection(db, "study_logs"),
+      where("userId", "==", currentUser.value.uid),
+      limit(100)
+    );
+    const snap = await getDocs(q);
+    studyLogs.value = snap.docs
+      .map(
+        (d) =>
+          ({
+            id: d.id,
+            ...d.data(),
+            createdAt: d.data().createdAt?.toDate() || new Date(),
+          } as StudyLog)
+      )
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   };
 
   const fetchBookmarks = async () => {
     if (!currentUser.value) return;
-    try {
-      const q = query(
-        collection(db, "bookmarks"),
-        where("userId", "==", currentUser.value.uid)
-      );
-      const snap = await getDocs(q);
-      const items = snap.docs.map((d) => ({
-        ...d.data(),
-        createdAt: d.data().createdAt?.toDate
-          ? d.data().createdAt.toDate()
-          : new Date(),
-      }));
-      items.sort(
-        (a: any, b: any) => b.createdAt.getTime() - a.createdAt.getTime()
-      );
-
-      const list: Question[] = [];
-      const ids = new Set<string>();
-      items.forEach((data: any) => {
-        if (data.question) {
-          list.push(data.question as Question);
-          ids.add(data.questionId);
-        }
-      });
-      bookmarkedQuestions.value = list;
-      bookmarkedIds.value = ids;
-    } catch (e) {
-      console.error(e);
-    }
+    const q = query(
+      collection(db, "bookmarks"),
+      where("userId", "==", currentUser.value.uid)
+    );
+    const snap = await getDocs(q);
+    bookmarkedQuestions.value = snap.docs.map(
+      (d) => d.data().question as Question
+    );
+    bookmarkedIds.value = new Set(snap.docs.map((d) => d.data().questionId));
   };
 
-  // --- AI機能 ---
-  const askAI = async (question: Question, userQuery?: string) => {
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-    if (!apiKey) {
-      aiResponse.value = "⚠️ APIキーが設定されていません。";
-      return;
+  const toggleBookmark = async (question: Question) => {
+    const uid = currentUser.value?.uid;
+    if (!uid) return;
+    if (bookmarkedIds.value.has(question.id)) {
+      bookmarkedIds.value.delete(question.id);
+      const q = query(
+        collection(db, "bookmarks"),
+        where("userId", "==", uid),
+        where("questionId", "==", question.id)
+      );
+      const s = await getDocs(q);
+      s.forEach((d) => deleteDoc(d.ref));
+    } else {
+      bookmarkedIds.value.add(question.id);
+      await addDoc(collection(db, "bookmarks"), {
+        userId: uid,
+        questionId: question.id,
+        question,
+        createdAt: serverTimestamp(),
+      });
     }
+    await fetchBookmarks();
+  };
+
+  const saveAnswer = async (
+    q: Question,
+    choice: number,
+    isCorrect: boolean,
+    confidence: any
+  ) => {
+    const uid = currentUser.value?.uid;
+    if (!uid) return;
+    q.lastResult = { isCorrect, confidence, userChoice: [choice] };
+    saveSession();
+    await addDoc(collection(db, "study_logs"), {
+      userId: uid,
+      questionId: q.id,
+      question: q,
+      userChoice: [choice],
+      isCorrect,
+      confidence,
+      createdAt: serverTimestamp(),
+    });
+    await Promise.all([fetchReviewQuestions(), fetchHistory()]);
+  };
+
+  const goToNext = () => {
+    currentSessionIndex.value++;
+    saveSession();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const askAI = async (q: Question) => {
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+    if (!apiKey) return (aiResponse.value = "APIキー未設定");
     isAiThinking.value = true;
     aiResponse.value = "";
     try {
+      const listUrl = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`;
+      const listResponse = await fetch(listUrl);
+      const listData = await listResponse.json();
+      const generationModels = (listData.models || []).filter((m: any) =>
+        m.supportedGenerationMethods?.includes("generateContent")
+      );
+      const flash = generationModels.find((m: any) =>
+        m.name.includes("gemini-1.5-flash")
+      );
+      const targetModel = (flash || generationModels[0])?.name.replace(
+        "models/",
+        ""
+      );
       const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-      const correctNumbers = question.correctIndices
-        .map((i) => i + 1)
-        .join(", ");
-      const prompt = `
-        あなたは看護学生の学習をサポートするチューターです。
-        【指示】
-        1. 「正解は ${correctNumbers} です」から始めてください。
-        2. なぜその答えになるのか、重要なキーワードを使って解説してください。
-        3. 他の選択肢がなぜ間違いなのか指摘してください。
-        【問題】${question.text}
-        【選択肢】${question.choices.map((c, i) => `${i + 1}. ${c}`).join("\n")}
-        【質問】${userQuery || "解説をお願いします。"}
-      `;
-      const result = await model.generateContent(prompt);
-      aiResponse.value = (await result.response).text();
+      const model = genAI.getGenerativeModel({ model: targetModel });
+      const prompt = `あなたは看護学生の学習をサポートするチューターです。「正解は ${q.correctIndices.map(
+        (i) => i + 1
+      )} です」から始めて、問題 「${q.text}」 を詳しく解説してください。`;
+      const res = await model.generateContent(prompt);
+      aiResponse.value = res.response.text();
     } catch (e: any) {
       aiResponse.value = "AIエラー: " + e.message;
     } finally {
@@ -255,252 +261,103 @@ export function useNextNs() {
     }
   };
 
-  const initAuth = () => {
-    onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        if (!currentUser.value)
-          currentUser.value = {
-            uid: user.uid,
-            email: user.email || "",
-            role: "student",
-            createdAt: new Date(),
-          } as User;
-        await fetchUserProfile(user.uid);
-      } else {
-        currentUser.value = null;
-      }
-    });
-  };
-
-  const fetchUserProfile = async (uid: string) => {
-    try {
-      const snap = await getDoc(doc(db, "users", uid));
-      if (snap.exists()) currentUser.value = { uid, ...snap.data() } as User;
-      else
-        await setDoc(
-          doc(db, "users", uid),
-          {
-            uid,
-            email: auth.currentUser?.email,
-            role: "student",
-            createdAt: new Date(),
-          },
-          { merge: true }
-        );
-      await Promise.all([
-        fetchHistory(),
-        fetchReviewQuestions(),
-        fetchBookmarks(),
-      ]);
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  // --- 回答保存 ---
-  const saveAnswer = async (
-    question: Question,
-    choiceIndex: number,
-    isCorrect: boolean,
-    confidence?: "ok" | "so-so" | "ng"
+  // --- ★ 演習モードの拡張 (午前・午後対応) ---
+  const fetchQuestions = async (
+    options: {
+      force?: boolean;
+      mode?: "random100" | "examYear";
+      year?: string;
+      period?: "am" | "pm";
+    } = {}
   ) => {
-    let userId = currentUser.value?.uid;
-    if (!userId && auth.currentUser) userId = auth.currentUser.uid;
-    if (!userId) return;
-
-    const newLog: StudyLog = {
-      id: "temp_" + Date.now(),
-      userId,
-      questionId: question.id,
-      question,
-      userChoice: [choiceIndex],
-      isCorrect,
-      timeTaken: 10,
-      createdAt: new Date(),
-      confidence,
-    };
-    studyLogs.value.unshift(newLog);
-
-    if (!isCorrect || confidence === "so-so" || confidence === "ng") {
-      const existingIdx = reviewQuestions.value.findIndex(
-        (q) => q.id === question.id
-      );
-      const updatedQ = {
-        ...question,
-        lastResult: { isCorrect, confidence, userChoice: [choiceIndex] },
-      };
-      if (existingIdx !== -1) reviewQuestions.value.splice(existingIdx, 1);
-      reviewQuestions.value.unshift(updatedQ);
-      clearedQuestionIds.value.delete(question.id);
-    } else {
-      if (reviewQuestions.value.some((q) => q.id === question.id))
-        clearedQuestionIds.value.add(question.id);
-    }
-
-    // ★演習モードの進捗管理
-    const qIndex = questions.value.findIndex((q) => q.id === question.id);
-    if (qIndex !== -1) {
-      questions.value.splice(qIndex, 1); // リストから削除
-      currentSessionIndex.value++; // ★カウントアップ
-      saveSession(); // 状態保存
-    }
-
-    try {
-      await addDoc(collection(db, "study_logs"), {
-        userId,
-        questionId: question.id,
-        question,
-        userChoice: [choiceIndex],
-        isCorrect,
-        timeTaken: 10,
-        confidence: confidence || null,
-        createdAt: serverTimestamp(),
-      });
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const fetchHistory = async () => {
-    if (!currentUser.value) return;
-    try {
-      const q = query(
-        collection(db, "study_logs"),
-        where("userId", "==", currentUser.value.uid),
-        limit(100)
-      );
-      const snap = await getDocs(q);
-      const logs = snap.docs.map(
-        (d) =>
-          ({
-            id: d.id,
-            ...d.data(),
-            createdAt: d.data().createdAt?.toDate
-              ? d.data().createdAt.toDate()
-              : new Date(),
-          } as StudyLog)
-      );
-      studyLogs.value = logs.sort(
-        (a, b) => b.createdAt.getTime() - a.createdAt.getTime()
-      );
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const fetchReviewQuestions = async () => {
-    if (!currentUser.value) return;
-    try {
-      clearedQuestionIds.value.clear();
-      const q = query(
-        collection(db, "study_logs"),
-        where("userId", "==", currentUser.value.uid),
-        limit(300)
-      );
-      const snap = await getDocs(q);
-      const logs = snap.docs.map((d) => d.data() as StudyLog);
-      logs.sort(
-        (a: any, b: any) =>
-          a.createdAt.toDate().getTime() - b.createdAt.toDate().getTime()
-      );
-
-      const reviewMap = new Map<string, Question>();
-      logs.forEach((log) => {
-        if (log.question?.id) {
-          if (
-            !log.isCorrect ||
-            log.confidence === "so-so" ||
-            log.confidence === "ng"
-          ) {
-            reviewMap.set(log.question.id, {
-              ...log.question,
-              lastResult: {
-                isCorrect: log.isCorrect,
-                confidence: log.confidence,
-              },
-            });
-          } else if (log.isCorrect && log.confidence === "ok") {
-            reviewMap.delete(log.question.id);
-          }
-        }
-      });
-      reviewQuestions.value = Array.from(reviewMap.values()).reverse();
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const logout = async () => {
-    clearSession();
-    await signOut(auth);
-    window.location.reload();
-  };
-
-  // --- 問題取得（フィルター対応） ---
-  const fetchQuestions = async (forceRefresh = false) => {
-    if (!forceRefresh && questions.value.length > 0) return;
-    if (!forceRefresh && restoreSession()) return; // 復元できたら終了
-
+    if (!options.force && restoreSession()) return;
     loading.value = true;
     try {
-      const q = query(collection(db, "questions"), limit(1000));
-      const snap = await getDocs(q);
-      let list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Question));
+      await fetchAllQuestions();
+      let list = [...masterQuestions.value];
 
-      if (selectedPeriod.value === "am") {
-        list = list.filter((q) => q.questionNumber.includes("午前"));
-      } else if (selectedPeriod.value === "pm") {
-        list = list.filter((q) => q.questionNumber.includes("午後"));
+      // 試験回指定フィルタ
+      if (options.mode === "examYear" && options.year) {
+        list = list.filter((q) => q.examYear === options.year);
       }
 
-      for (let i = list.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [list[i], list[j]] = [list[j], list[i]];
+      // 時間帯フィルタ (引数優先、なければグローバル設定)
+      const activePeriod = options.period || selectedPeriod.value;
+      if (activePeriod === "am")
+        list = list.filter((q) => q.questionNumber?.includes("午前"));
+      else if (activePeriod === "pm")
+        list = list.filter((q) => q.questionNumber?.includes("午後"));
+
+      if (options.mode === "random100") {
+        list.sort(() => Math.random() - 0.5);
+        list = list.slice(0, 100);
+      } else if (options.mode === "examYear") {
+        // 回指定の場合は問題番号順
+        list.sort((a, b) =>
+          a.questionNumber.localeCompare(b.questionNumber, undefined, {
+            numeric: true,
+          })
+        );
+      } else {
+        // デフォルト：全件ランダム
+        list.sort(() => Math.random() - 0.5);
       }
 
       questions.value = list;
-      currentSessionIndex.value = 0; // ★新規取得時はカウントリセット
+      currentSessionIndex.value = 0;
       saveSession();
-    } catch (e) {
-      console.error("問題取得エラー:", e);
     } finally {
       loading.value = false;
     }
   };
 
-  watch(selectedPeriod, () => {
-    clearSession();
-    fetchQuestions(true);
-  });
-
   return {
     currentUser,
+    masterQuestions,
     questions,
+    questionStats,
     reviewQuestions,
-    clearedQuestionIds,
     bookmarkedQuestions,
     bookmarkedIds,
     studyLogs,
     loading,
-    todayLogCount,
-    availableTags,
-    aiResponse,
-    isAiThinking,
     totalExp,
     currentLevel,
     levelProgress,
     currentRank,
     selectedPeriod,
-    currentSessionIndex, // ★公開: UI側で使う
-    askAI,
-    initAuth,
-    logout,
+    currentSessionIndex,
+    aiResponse,
+    isAiThinking,
+    initAuth: () =>
+      onAuthStateChanged(auth, async (user) => {
+        if (user) {
+          const snap = await getDoc(doc(db, "users", user.uid));
+          currentUser.value = { uid: user.uid, ...snap.data() } as User;
+          await Promise.all([
+            fetchAllQuestions(),
+            fetchHistory(),
+            fetchReviewQuestions(),
+            fetchBookmarks(),
+          ]);
+        } else {
+          currentUser.value = null;
+        }
+      }),
     fetchQuestions,
-    fetchHistory,
+    fetchAllQuestions,
     fetchReviewQuestions,
+    fetchHistory,
     fetchBookmarks,
     toggleBookmark,
     saveAnswer,
+    askAI,
     clearSession,
+    goToNext,
+    logout: async () => {
+      clearSession();
+      await signOut(auth);
+      window.location.reload();
+    },
   };
 }

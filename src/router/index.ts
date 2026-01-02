@@ -1,8 +1,16 @@
 import { createRouter, createWebHistory } from "vue-router";
-import { getAuth, onAuthStateChanged, User } from "firebase/auth";
+import { getAuth, onAuthStateChanged, type User } from "firebase/auth";
 import HomeView from "../views/HomeView/HomeView.vue";
 import LoginView from "../views/LoginView/LoginView.vue";
-import VerifyEmailView from "../views/VerifyEmailView/VerifyEmailView.vue"; // ★新規作成予定
+import VerifyEmailView from "../views/VerifyEmailView/VerifyEmailView.vue";
+// ★ 演習画面をインポート
+import StudyView from "../views/StudyView/StudyView.vue";
+import ReviewView from "../views/ReviewView/ReviewView.vue";
+
+// 仮のコンポーネント。中身がないとエラーになるため、後ほどReviewView.vueを作成してください。
+const Placeholder = {
+  template: '<div class="p-10 text-center">復習画面を作成中です</div>',
+};
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -19,12 +27,25 @@ const router = createRouter({
       component: LoginView,
       meta: { public: true },
     },
-    // ★追加: メール確認待機画面
     {
       path: "/verify-email",
       name: "verify-email",
       component: VerifyEmailView,
-      meta: { requiresAuth: true }, // ログインはしている状態なのでtrue
+      meta: { requiresAuth: true },
+    },
+    // ★ 演習画面を組み込み
+    {
+      path: "/study",
+      name: "study",
+      component: StudyView,
+      meta: { requiresAuth: true },
+    },
+    // ★ 復習画面（次はこれを作成します）
+    {
+      path: "/review",
+      name: "review",
+      component: ReviewView, // ★ Placeholder から ReviewView に変更
+      meta: { requiresAuth: true },
     },
   ],
 });
@@ -41,24 +62,20 @@ router.beforeEach(async (to, from, next) => {
   const requiresAuth = to.matched.some((record) => record.meta.requiresAuth);
 
   if (requiresAuth && !currentUser) {
-    // 未ログインならログイン画面へ
     next("/login");
   } else if (
     currentUser &&
     !currentUser.emailVerified &&
     to.name !== "verify-email"
   ) {
-    // ★追加: ログインしてるけど「メール未認証」なら待機画面へ強制移動
     next("/verify-email");
   } else if (
     currentUser &&
     currentUser.emailVerified &&
     to.name === "verify-email"
   ) {
-    // ★追加: 認証済みなら待機画面には入れない（ホームへ）
     next("/");
   } else if (to.path === "/login" && currentUser && currentUser.emailVerified) {
-    // ログイン済み＆認証済みならホームへ
     next("/");
   } else {
     next();

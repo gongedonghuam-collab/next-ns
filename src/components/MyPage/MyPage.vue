@@ -36,7 +36,6 @@ onMounted(() => {
 });
 
 const chartData = computed(() => {
-  // データが空の場合のデフォルト表示
   if (studyLogs.value.length === 0) {
     return {
       labels: ["必修", "一般", "状況設定", "解剖生理", "基礎看護", "精神"],
@@ -67,7 +66,6 @@ const chartData = computed(() => {
     .sort((a, b) => stats[b].total - stats[a].total)
     .slice(0, 6);
 
-  // タグが少ない場合にデフォルトを補充
   if (topTags.length < 3) {
     const defaults = [
       "必修",
@@ -138,14 +136,18 @@ const formatDate = (date: any) => {
 </script>
 
 <template>
-  <div class="pb-24 animate-fade-in">
+  <div class="animate-fade-in">
     <div
       class="bg-gradient-to-br from-indigo-600 to-purple-700 rounded-3xl p-6 text-white shadow-lg shadow-indigo-200 mb-6 relative overflow-hidden"
     >
       <div class="relative z-10">
         <div class="flex justify-between items-start mb-4">
           <div>
-            <p class="text-[10px] font-bold opacity-70 mb-1">CURRENT RANK</p>
+            <p
+              class="text-[10px] font-bold opacity-70 mb-1 uppercase tracking-wider"
+            >
+              Current Rank
+            </p>
             <h2 class="text-2xl font-black tracking-tight">
               {{ currentRank }}
             </h2>
@@ -156,28 +158,19 @@ const formatDate = (date: any) => {
             <span class="font-black text-sm">Lv.{{ currentLevel }}</span>
           </div>
         </div>
-
         <div class="flex justify-between text-xs font-bold opacity-80 mb-2">
           <span>EXP: {{ totalExp }}</span>
           <span>Next: {{ 100 - levelProgress }}xp</span>
         </div>
-
         <div
           class="w-full bg-black/20 h-3 rounded-full overflow-hidden backdrop-blur-sm border border-white/10"
         >
           <div
-            class="bg-yellow-400 h-full rounded-full transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(250,204,21,0.6)]"
+            class="bg-yellow-400 h-full rounded-full transition-all duration-1000 ease-out"
             :style="{ width: `${levelProgress}%` }"
           ></div>
         </div>
       </div>
-
-      <div
-        class="absolute -right-8 -top-8 w-40 h-40 bg-white opacity-10 rounded-full blur-3xl"
-      ></div>
-      <div
-        class="absolute -left-8 -bottom-8 w-32 h-32 bg-purple-400 opacity-20 rounded-full blur-3xl"
-      ></div>
     </div>
 
     <div
@@ -208,43 +201,45 @@ const formatDate = (date: any) => {
         <p class="text-xs font-bold">まだ履歴がありません</p>
       </div>
 
-      <div v-else class="space-y-3">
-        <div
-          v-for="log in studyLogs"
-          :key="log.id"
-          class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-start gap-3 transition hover:border-blue-200"
-        >
+      <div v-else class="max-h-[400px] overflow-y-auto pr-2 no-scrollbar">
+        <div class="space-y-3">
           <div
-            class="w-10 h-10 rounded-full flex items-center justify-center text-lg flex-shrink-0"
-            :class="
-              log.isCorrect
-                ? 'bg-blue-50 text-blue-500'
-                : 'bg-red-50 text-red-500'
-            "
+            v-for="log in studyLogs"
+            :key="log.id"
+            class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-start gap-3 transition hover:border-blue-200"
           >
-            {{ log.isCorrect ? "⭕️" : "❌" }}
-          </div>
-
-          <div class="flex-1 min-w-0">
-            <div class="flex justify-between items-start mb-1">
-              <span
-                class="text-[10px] font-bold text-slate-400 bg-slate-50 px-2 py-0.5 rounded"
-              >
-                {{ formatDate(log.createdAt) }}
-              </span>
-            </div>
-            <p
-              class="text-sm font-bold text-slate-700 line-clamp-2 leading-relaxed"
+            <div
+              class="w-10 h-10 rounded-full flex items-center justify-center text-lg flex-shrink-0"
+              :class="
+                log.isCorrect
+                  ? 'bg-blue-50 text-blue-500'
+                  : 'bg-red-50 text-red-500'
+              "
             >
-              {{ log.question?.text || "問題文なし" }}
-            </p>
-            <div class="mt-2 flex gap-1 overflow-hidden">
-              <span
-                v-for="tag in log.question?.tags"
-                :key="tag"
-                class="text-[9px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded"
-                >#{{ tag }}</span
+              {{ log.isCorrect ? "⭕️" : "❌" }}
+            </div>
+
+            <div class="flex-1 min-w-0">
+              <div class="flex justify-between items-start mb-1">
+                <span
+                  class="text-[10px] font-bold text-slate-400 bg-slate-50 px-2 py-0.5 rounded"
+                >
+                  {{ formatDate(log.createdAt) }}
+                </span>
+              </div>
+              <p
+                class="text-sm font-bold text-slate-700 line-clamp-2 leading-relaxed"
               >
+                {{ log.question?.text || "問題文なし" }}
+              </p>
+              <div class="mt-2 flex gap-1 overflow-hidden">
+                <span
+                  v-for="tag in log.question?.tags"
+                  :key="tag"
+                  class="text-[9px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded"
+                  >#{{ tag }}</span
+                >
+              </div>
             </div>
           </div>
         </div>
@@ -266,5 +261,14 @@ const formatDate = (date: any) => {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* スクロールバーを非表示にする設定 */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
 }
 </style>
