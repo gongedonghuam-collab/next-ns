@@ -1,9 +1,8 @@
-import { ref, computed, watch } from "vue";
+import { ref, computed } from "vue";
 import { db, auth } from "@/firebase";
 import {
   doc,
   getDoc,
-  setDoc,
   collection,
   query,
   limit,
@@ -21,6 +20,7 @@ const STORAGE_KEY_SESSION = "nextns_session_questions";
 const STORAGE_KEY_INDEX = "nextns_session_index";
 const STORAGE_KEY_PERIOD = "nextns_session_period";
 
+// --- グローバルステート ---
 const currentUser = ref<User | null>(null);
 const masterQuestions = ref<Question[]>([]);
 const questions = ref<Question[]>([]);
@@ -32,6 +32,15 @@ const loading = ref(false);
 
 const currentSessionIndex = ref(0);
 const selectedPeriod = ref<"all" | "am" | "pm">("all");
+
+// ★ 結果画面用ステート
+const sessionResult = ref<{
+  correct: number;
+  total: number;
+  rate: number;
+  judge: string;
+  judgeText: string;
+} | null>(null);
 
 const totalExp = computed(() =>
   studyLogs.value.reduce((t, log) => t + (log.isCorrect ? 20 : 5), 0)
@@ -58,6 +67,39 @@ const questionStats = computed(() => {
   return Object.entries(stats)
     .map(([year, data]) => ({ year, ...data }))
     .sort((a, b) => b.year.localeCompare(a.year, undefined, { numeric: true }));
+});
+
+const dbHealthReport = computed(() => {
+  const report: Record<
+    string,
+    { missingAm: string[]; missingPm: string[]; duplicates: string[] }
+  > = {};
+  const grouped = masterQuestions.value.reduce((acc, q) => {
+    const key = q.examYear || "不明";
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(q.questionNumber);
+    return acc;
+  }, {} as Record<string, string[]>);
+
+  Object.entries(grouped).forEach(([year, nums]) => {
+    const am = nums.filter((n) => n.includes("午前"));
+    const pm = nums.filter((n) => n.includes("午後"));
+    const missingAm = [];
+    const missingPm = [];
+    for (let i = 1; i <= 120; i++) {
+      if (!am.includes(`午前${i}`)) missingAm.push(`午前${i}`);
+      if (!pm.includes(`午後${i}`)) missingPm.push(`午後${i}`);
+    }
+    const duplicates = nums.filter(
+      (item, index) => nums.indexOf(item) !== index
+    );
+    report[year] = {
+      missingAm,
+      missingPm,
+      duplicates: [...new Set(duplicates)],
+    };
+  });
+  return report;
 });
 
 export function useNextNs() {
@@ -261,7 +303,43 @@ export function useNextNs() {
     }
   };
 
-  // --- ★ 演習モードの拡張 (午前・午後対応) ---
+  const cleanupDuplicates = async () => {
+    if (
+      !confirm(
+        "⚠️ 重複している問題を自動削除しますか？\n(同じ年度・番号の問題を1つ残して他を削除します)"
+      )
+    )
+      return;
+    loading.value = true;
+    try {
+      const seen = new Set();
+      const toDeleteIds: string[] = [];
+      masterQuestions.value.forEach((q) => {
+        const key = `${q.examYear}-${q.questionNumber}`;
+        if (seen.has(key)) {
+          toDeleteIds.push(q.id);
+        } else {
+          seen.add(key);
+        }
+      });
+      if (toDeleteIds.length === 0) {
+        alert("✅ 重複データは見つかりませんでした。");
+        return;
+      }
+      for (const id of toDeleteIds) {
+        await deleteDoc(doc(db, "questions", id));
+      }
+      alert(
+        `✨ ${toDeleteIds.length}件の重複を削除しました。再読み込みします。`
+      );
+      window.location.reload();
+    } catch (e: any) {
+      alert("❌ 削除中にエラーが発生しました: " + e.message);
+    } finally {
+      loading.value = false;
+    }
+  };
+
   const fetchQuestions = async (
     options: {
       force?: boolean;
@@ -276,12 +354,10 @@ export function useNextNs() {
       await fetchAllQuestions();
       let list = [...masterQuestions.value];
 
-      // 試験回指定フィルタ
       if (options.mode === "examYear" && options.year) {
         list = list.filter((q) => q.examYear === options.year);
       }
 
-      // 時間帯フィルタ (引数優先、なければグローバル設定)
       const activePeriod = options.period || selectedPeriod.value;
       if (activePeriod === "am")
         list = list.filter((q) => q.questionNumber?.includes("午前"));
@@ -292,14 +368,12 @@ export function useNextNs() {
         list.sort(() => Math.random() - 0.5);
         list = list.slice(0, 100);
       } else if (options.mode === "examYear") {
-        // 回指定の場合は問題番号順
         list.sort((a, b) =>
           a.questionNumber.localeCompare(b.questionNumber, undefined, {
             numeric: true,
           })
         );
       } else {
-        // デフォルト：全件ランダム
         list.sort(() => Math.random() - 0.5);
       }
 
@@ -311,11 +385,44 @@ export function useNextNs() {
     }
   };
 
+  // ★ リザルト計算用（外部から渡された数で計算する場合）
+  const setSessionResult = (correct: number, total: number) => {
+    if (total === 0) return;
+    const rate = Math.round((correct / total) * 100);
+    let judge = "";
+    let judgeText = "";
+
+    if (rate >= 90) {
+      judge = "S";
+      judgeText = "素晴らしい！完璧に近い仕上がりです✨";
+    } else if (rate >= 80) {
+      judge = "A";
+      judgeText = "合格安全圏です！この調子でいきましょう🌸";
+    } else if (rate >= 60) {
+      judge = "B";
+      judgeText = "合格ライン付近です。苦手分野を見直しましょう💪";
+    } else {
+      judge = "C";
+      judgeText = "要復習です。間違えた問題をしっかり見直しましょう📚";
+    }
+    sessionResult.value = { correct, total, rate, judge, judgeText };
+  };
+
+  // ★ 現在の questions から自動計算してリザルト設定
+  const finishSession = () => {
+    const total = questions.value.length;
+    const correct = questions.value.filter(
+      (q) => q.lastResult?.isCorrect
+    ).length;
+    setSessionResult(correct, total);
+  };
+
   return {
     currentUser,
     masterQuestions,
     questions,
     questionStats,
+    dbHealthReport,
     reviewQuestions,
     bookmarkedQuestions,
     bookmarkedIds,
@@ -329,6 +436,7 @@ export function useNextNs() {
     currentSessionIndex,
     aiResponse,
     isAiThinking,
+    sessionResult, // 追加
     initAuth: () =>
       onAuthStateChanged(auth, async (user) => {
         if (user) {
@@ -354,6 +462,9 @@ export function useNextNs() {
     askAI,
     clearSession,
     goToNext,
+    cleanupDuplicates,
+    finishSession, // 追加
+    setSessionResult, // 追加
     logout: async () => {
       clearSession();
       await signOut(auth);

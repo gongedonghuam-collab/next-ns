@@ -3,14 +3,9 @@ import { getAuth, onAuthStateChanged, type User } from "firebase/auth";
 import HomeView from "../views/HomeView/HomeView.vue";
 import LoginView from "../views/LoginView/LoginView.vue";
 import VerifyEmailView from "../views/VerifyEmailView/VerifyEmailView.vue";
-// ★ 演習画面をインポート
 import StudyView from "../views/StudyView/StudyView.vue";
 import ReviewView from "../views/ReviewView/ReviewView.vue";
-
-// 仮のコンポーネント。中身がないとエラーになるため、後ほどReviewView.vueを作成してください。
-const Placeholder = {
-  template: '<div class="p-10 text-center">復習画面を作成中です</div>',
-};
+import ResultView from "../views/ResultView/ResultView.vue"; // ★ 追加
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -33,18 +28,23 @@ const router = createRouter({
       component: VerifyEmailView,
       meta: { requiresAuth: true },
     },
-    // ★ 演習画面を組み込み
     {
       path: "/study",
       name: "study",
       component: StudyView,
       meta: { requiresAuth: true },
     },
-    // ★ 復習画面（次はこれを作成します）
     {
       path: "/review",
       name: "review",
-      component: ReviewView, // ★ Placeholder から ReviewView に変更
+      component: ReviewView,
+      meta: { requiresAuth: true },
+    },
+    // ★ 追加
+    {
+      path: "/result",
+      name: "result",
+      component: ResultView,
       meta: { requiresAuth: true },
     },
   ],

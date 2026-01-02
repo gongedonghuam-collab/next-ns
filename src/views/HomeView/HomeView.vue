@@ -108,24 +108,72 @@
           <section
             class="bg-white rounded-3xl p-5 border border-slate-100 shadow-sm"
           >
-            <h2
-              class="font-bold text-slate-800 mb-4 flex items-center gap-2 text-sm"
-            >
-              📂 試験回別に解く
-            </h2>
-            <div class="space-y-3">
+            <div class="flex justify-between items-center mb-4">
+              <h2
+                class="font-bold text-slate-800 flex items-center gap-2 text-sm"
+              >
+                📂 データベース診断
+              </h2>
+              <button
+                @click="cleanupDuplicates"
+                class="text-[9px] bg-orange-50 text-orange-600 px-3 py-1.5 rounded-full font-black border border-orange-100 hover:bg-orange-600 hover:text-white transition"
+              >
+                重複を一括削除
+              </button>
+            </div>
+
+            <div class="space-y-6">
               <div
                 v-for="stat in questionStats"
                 :key="stat.year"
                 class="p-4 bg-slate-50 rounded-2xl border border-slate-100"
               >
-                <div class="flex justify-between items-center mb-3">
+                <div class="flex justify-between items-center mb-2">
                   <span class="font-black text-slate-800">{{ stat.year }}</span>
-                  <span class="text-[10px] font-bold text-slate-400"
-                    >合計 {{ stat.total }}問</span
+                  <span
+                    class="text-[10px] font-bold"
+                    :class="
+                      stat.total === 240 ? 'text-green-500' : 'text-red-500'
+                    "
                   >
+                    {{ stat.total }} / 240問
+                  </span>
                 </div>
-                <div class="grid grid-cols-2 gap-2">
+
+                <div
+                  v-if="dbHealthReport[stat.year]"
+                  class="space-y-2 mt-3 pt-3 border-t border-slate-200"
+                >
+                  <div
+                    v-if="dbHealthReport[stat.year].missingAm.length > 0"
+                    class="text-[9px] text-red-500 leading-tight"
+                  >
+                    <span class="font-bold underline">午前不足:</span>
+                    {{ dbHealthReport[stat.year].missingAm.join(", ") }}
+                  </div>
+                  <div
+                    v-if="dbHealthReport[stat.year].missingPm.length > 0"
+                    class="text-[9px] text-red-500 leading-tight"
+                  >
+                    <span class="font-bold underline">午後不足:</span>
+                    {{ dbHealthReport[stat.year].missingPm.join(", ") }}
+                  </div>
+                  <div
+                    v-if="dbHealthReport[stat.year].duplicates.length > 0"
+                    class="text-[9px] text-orange-600 font-bold"
+                  >
+                    ⚠️ 重複あり:
+                    {{ dbHealthReport[stat.year].duplicates.join(", ") }}
+                  </div>
+                  <div
+                    v-if="stat.total === 240"
+                    class="text-[9px] text-green-600 font-bold italic"
+                  >
+                    ✨ 整合性チェック完了
+                  </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-2 mt-4">
                   <button
                     @click="
                       startStudy({
@@ -134,9 +182,9 @@
                         period: 'am',
                       })
                     "
-                    class="py-2 bg-white border border-blue-100 rounded-xl text-[10px] font-black text-blue-600 hover:bg-blue-600 hover:text-white transition"
+                    class="py-2 bg-white border border-blue-100 rounded-xl text-[10px] font-black text-blue-600 hover:bg-blue-600 hover:text-white transition active:scale-95"
                   >
-                    午前 ({{ stat.am }})
+                    午前開始 ({{ stat.am }})
                   </button>
                   <button
                     @click="
@@ -146,14 +194,15 @@
                         period: 'pm',
                       })
                     "
-                    class="py-2 bg-white border border-blue-100 rounded-xl text-[10px] font-black text-blue-600 hover:bg-blue-600 hover:text-white transition"
+                    class="py-2 bg-white border border-blue-100 rounded-xl text-[10px] font-black text-blue-600 hover:bg-blue-600 hover:text-white transition active:scale-95"
                   >
-                    午後 ({{ stat.pm }})
+                    午後開始 ({{ stat.pm }})
                   </button>
                 </div>
               </div>
             </div>
           </section>
+
           <JsonUploader />
         </div>
 
@@ -225,6 +274,7 @@ const {
   currentUser,
   masterQuestions,
   questionStats,
+  dbHealthReport, // 追加
   reviewQuestions,
   bookmarkedQuestions,
   currentLevel,
@@ -236,6 +286,7 @@ const {
   clearSession,
   fetchQuestions,
   selectedPeriod,
+  cleanupDuplicates, // 追加
 } = useNextNs();
 
 const currentTab = ref("home");
@@ -250,7 +301,6 @@ const startStudy = async (options: {
   period?: "am" | "pm";
 }) => {
   clearSession();
-  // 回指定の場合は period をセットする
   if (options.period) selectedPeriod.value = options.period;
 
   await fetchQuestions({

@@ -5,12 +5,15 @@ import { useNextNs } from "@/composables/useNextNs";
 import QuizCard from "@/components/QuizCard/QuizCard.vue";
 
 const router = useRouter();
-const { reviewQuestions, loading, fetchReviewQuestions, saveAnswer } =
-  useNextNs();
+const {
+  reviewQuestions,
+  loading,
+  fetchReviewQuestions,
+  saveAnswer,
+  setSessionResult, // ★ 追加
+} = useNextNs();
 
-const isFinished = ref(false);
 const currentIndex = ref(0);
-
 const amPmFilter = ref<"all" | "am" | "pm">("all");
 const confidenceFilter = ref<"all" | "ok" | "ng" | "so-so">("all");
 
@@ -18,24 +21,21 @@ onMounted(async () => {
   await fetchReviewQuestions();
 });
 
-// ★ 自信度（⭕️・🔺・❌）のみに基づいた絞り込みロジック (正誤は問わない)
 const filteredList = computed(() => {
   return reviewQuestions.value.filter((q) => {
-    // 1. 午前・午後チェック
     const matchTime =
       amPmFilter.value === "all" ||
       (amPmFilter.value === "am"
         ? q.questionNumber.includes("午前")
         : q.questionNumber.includes("午後"));
 
-    // 2. 自信度チェックの修正 (自信度 ok = ⭕️ ならば表示)
     const matchConfidence =
       confidenceFilter.value === "all" ||
       (confidenceFilter.value === "ok"
-        ? q.lastResult?.confidence === "ok" // ユーザーが⭕️を選んだもの
+        ? q.lastResult?.confidence === "ok"
         : confidenceFilter.value === "ng"
-        ? q.lastResult?.confidence === "ng" || q.lastResult?.isCorrect === false // ❌ または 不正解
-        : q.lastResult?.confidence === "so-so"); // 🔺
+        ? q.lastResult?.confidence === "ng" || q.lastResult?.isCorrect === false
+        : q.lastResult?.confidence === "so-so");
 
     return matchTime && matchConfidence;
   });
@@ -70,18 +70,26 @@ const handleAnswer = async (
   hasAnsweredThisTime.value = true;
 };
 
+// ★ 修正: 最後の問題なら集計してリザルトへ
 const handleNext = () => {
   if (currentIndex.value < filteredList.value.length - 1) {
     currentIndex.value++;
     window.scrollTo({ top: 0, behavior: "smooth" });
   } else {
-    isFinished.value = true;
+    // 復習モードの集計
+    const total = filteredList.value.length;
+    // 表示されているリスト内で正解済みのものをカウント
+    const correct = filteredList.value.filter(
+      (q) => q.lastResult?.isCorrect
+    ).length;
+
+    setSessionResult(correct, total);
+    router.push("/result");
   }
 };
 
 const resetFilter = () => {
   currentIndex.value = 0;
-  isFinished.value = false;
   hasAnsweredThisTime.value = false;
 };
 </script>
@@ -200,18 +208,21 @@ const resetFilter = () => {
         Loading...
       </div>
 
-      <div v-else-if="currentQuestion && !isFinished">
+      <div v-else-if="currentQuestion">
         <QuizCard
           :question="currentQuestion"
           :index="currentIndex"
           @answer="handleAnswer"
         />
+
         <button
           v-if="hasAnsweredThisTime"
           @click="handleNext"
           class="w-full py-5 bg-orange-600 text-white font-black rounded-3xl shadow-xl shadow-orange-100 mt-4 active:scale-95 transition-all flex items-center justify-center gap-2"
         >
-          <span>次の問題へ</span>
+          <span>{{
+            currentIndex < filteredList.length - 1 ? "次の問題へ" : "結果を見る"
+          }}</span>
           <span class="text-xl">→</span>
         </button>
       </div>

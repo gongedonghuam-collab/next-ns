@@ -165,13 +165,13 @@ const correctAnswerLabel = computed(() => {
           @click="submitWithConfidence('so-so')"
           class="flex-1 py-4 rounded-2xl bg-yellow-400 text-white font-black shadow-lg shadow-yellow-100 active:scale-95 transition"
         >
-          🔺 三角
+          🔺 まぁまぁ
         </button>
         <button
           @click="submitWithConfidence('ng')"
           class="flex-1 py-4 rounded-2xl bg-red-500 text-white font-black shadow-lg shadow-red-100 active:scale-95 transition"
         >
-          ❌ バツ
+          ❌ 自信なし
         </button>
       </div>
     </div>

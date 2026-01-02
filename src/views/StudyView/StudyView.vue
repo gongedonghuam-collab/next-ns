@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, computed } from "vue";
+import { onMounted, computed } from "vue";
 import { useRouter } from "vue-router";
 import { useNextNs } from "@/composables/useNextNs";
 import QuizCard from "@/components/QuizCard/QuizCard.vue";
@@ -14,16 +14,13 @@ const {
   saveAnswer,
   clearSession,
   goToNext,
+  finishSession, // ★ 追加
 } = useNextNs();
 
-const isFinished = ref(false);
-
 onMounted(async () => {
-  // 引数を空のオブジェクトにすることで型エラーを回避
   await fetchQuestions({});
 });
 
-// インデックスに基づいて現在の問題を取得
 const currentQuestion = computed(
   () => questions.value[currentSessionIndex.value] || null
 );
@@ -37,12 +34,13 @@ const handleAnswer = async (
   await saveAnswer(currentQuestion.value, choiceIndex, isCorrect, confidence);
 };
 
-// 「次の問題へ」ボタンの処理
+// ★ 修正: 最後の問題なら集計してリザルトへ
 const handleNext = () => {
   if (currentSessionIndex.value < questions.value.length - 1) {
     goToNext();
   } else {
-    isFinished.value = true;
+    finishSession(); // 集計実行
+    router.push("/result"); // 画面遷移
   }
 };
 
@@ -50,13 +48,10 @@ const resetAndFetch = async (mode: "all" | "am" | "pm") => {
   if (confirm("現在の進捗をリセットして、新しく問題を読み込みますか？")) {
     clearSession();
     selectedPeriod.value = mode;
-    // ★ 修正箇所: boolean ではなくオブジェクト形式で渡してエラーを解消
     await fetchQuestions({ force: true });
-    isFinished.value = false;
   }
 };
 
-// QuizCard内の回答状況を判定する補助関数
 const isAnsweredLocally = (q: any) => {
   return !!q?.lastResult;
 };
@@ -91,10 +86,7 @@ const isAnsweredLocally = (q: any) => {
     </header>
 
     <main class="max-w-md mx-auto px-6 pt-6">
-      <div
-        v-if="!isFinished"
-        class="flex gap-2 mb-6 bg-slate-200/50 p-1 rounded-2xl"
-      >
+      <div class="flex gap-2 mb-6 bg-slate-200/50 p-1 rounded-2xl">
         <button
           v-for="m in [
             { id: 'all', n: '全件' },
@@ -121,7 +113,7 @@ const isAnsweredLocally = (q: any) => {
         問題を準備しています...
       </div>
 
-      <div v-else-if="currentQuestion && !isFinished">
+      <div v-else-if="currentQuestion">
         <QuizCard
           :question="currentQuestion"
           :index="currentSessionIndex"
@@ -133,25 +125,12 @@ const isAnsweredLocally = (q: any) => {
           @click="handleNext"
           class="w-full py-5 bg-blue-600 text-white font-black rounded-3xl shadow-xl shadow-blue-200 mt-4 active:scale-95 transition-all flex items-center justify-center gap-2"
         >
-          <span>次の問題へ進む</span>
+          <span>{{
+            currentSessionIndex < questions.length - 1
+              ? "次の問題へ進む"
+              : "結果を見る"
+          }}</span>
           <span class="text-xl">→</span>
-        </button>
-      </div>
-
-      <div
-        v-else-if="isFinished"
-        class="text-center py-20 bg-white rounded-[40px] shadow-sm border p-8"
-      >
-        <div class="text-6xl mb-6">🎉</div>
-        <h2 class="text-xl font-black text-slate-800 mb-2">セッション完了！</h2>
-        <p class="text-slate-500 text-xs mb-8">
-          すべての問題を解き終えました。
-        </p>
-        <button
-          @click="router.push('/')"
-          class="w-full py-4 bg-blue-600 text-white font-bold rounded-2xl shadow-lg"
-        >
-          ホームへ戻る
         </button>
       </div>
     </main>
