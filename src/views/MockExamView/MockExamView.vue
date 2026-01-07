@@ -16,9 +16,7 @@ const {
   submitExam,
 } = useMockExam();
 
-// ユーザーの回答（インデックス）を保持する配列
 const userAnswers = ref<number[]>([]);
-// 画面状態（0:トップ, 1:試験中）
 const isTakingExam = ref(false);
 
 onMounted(async () => {
@@ -27,25 +25,17 @@ onMounted(async () => {
   }
 });
 
-// 試験開始
 const startExam = async () => {
   await loadExamQuestions();
-  // 回答配列を初期化 (-1は未回答)
   userAnswers.value = new Array(examQuestions.value.length).fill(-1);
   isTakingExam.value = true;
   window.scrollTo(0, 0);
 };
 
-// 提出処理
 const handleSubmit = async () => {
-  // 未回答チェック
   const unansweredCount = userAnswers.value.filter((a) => a === -1).length;
   if (unansweredCount > 0) {
-    if (
-      !confirm(
-        `未回答が ${unansweredCount} 問あります。\nこのまま提出しますか？`
-      )
-    )
+    if (!confirm(`未回答が ${unansweredCount} 問あります。\n提出しますか？`))
       return;
   } else {
     if (!confirm("提出しますか？\n提出後の修正はできません。")) return;
@@ -57,21 +47,36 @@ const handleSubmit = async () => {
       userAnswers.value,
       examQuestions.value
     );
-    // 状態をリセットして結果画面（待機画面）へ
     isTakingExam.value = false;
     window.scrollTo(0, 0);
   }
 };
 
-// 合否判定
+// 合否判定（必修クリア かつ 一般クリア）
 const judgeResult = computed(() => {
-  if (!activeExam.value?.stats || !userSubmission.value) return null;
-  return userSubmission.value.score >= activeExam.value.stats.borderScore
-    ? "合格"
-    : "不合格";
+  const stats = activeExam.value?.stats;
+  const sub = userSubmission.value;
+  if (!stats || !sub) return null;
+
+  const isMandatoryOk = sub.mandatoryScore >= stats.mandatoryBorder;
+  const isGeneralOk = sub.generalScore >= stats.generalBorder;
+
+  return isMandatoryOk && isGeneralOk ? "合格" : "不合格";
 });
 
-// 締め切りフォーマット
+// 不合格理由
+const failReason = computed(() => {
+  if (judgeResult.value === "合格") return null;
+  const stats = activeExam.value?.stats;
+  const sub = userSubmission.value;
+  if (!stats || !sub) return "";
+
+  const reasons = [];
+  if (sub.mandatoryScore < stats.mandatoryBorder) reasons.push("必修落ち");
+  if (sub.generalScore < stats.generalBorder) reasons.push("一般得点不足");
+  return reasons.join("・");
+});
+
 const deadlineString = computed(() => {
   if (!activeExam.value?.deadline) return "";
   return activeExam.value.deadline.toLocaleDateString() + " まで";
@@ -106,21 +111,17 @@ const deadlineString = computed(() => {
       >
         <p class="text-4xl mb-4">💤</p>
         <p class="font-bold text-slate-600">現在開催中の模試はありません</p>
-        <p class="text-xs text-slate-400 mt-2">
-          次回のお知らせをお待ちください
-        </p>
       </div>
 
       <div v-else-if="isTakingExam" class="space-y-8">
         <div
-          class="bg-blue-600 text-white p-4 rounded-xl shadow-lg sticky top-20 z-20"
+          class="bg-blue-600 text-white p-4 rounded-xl shadow-lg sticky top-20 z-20 flex justify-between items-center"
         >
-          <div class="flex justify-between items-center">
-            <span class="font-bold">残り問題数</span>
-            <span class="text-xl font-black"
-              >{{ userAnswers.filter((a) => a === -1).length }}問</span
-            >
-          </div>
+          <span class="font-bold text-sm">残り問題数</span>
+          <span class="text-xl font-black"
+            >{{ userAnswers.filter((a) => a === -1).length }} /
+            {{ examQuestions.length }}問</span
+          >
         </div>
 
         <div
@@ -133,14 +134,20 @@ const deadlineString = computed(() => {
               class="bg-slate-100 text-slate-500 text-xs font-bold px-2 py-1 rounded"
               >第{{ idx + 1 }}問</span
             >
-            <span class="text-xs font-bold text-slate-400">{{
-              q.examYear
-            }}</span>
+            <span
+              class="text-[10px] font-bold px-2 py-1 rounded"
+              :class="
+                q.type === 'mandatory'
+                  ? 'bg-red-100 text-red-600'
+                  : 'bg-blue-50 text-blue-600'
+              "
+            >
+              {{ q.type === "mandatory" ? "必修" : "一般" }}
+            </span>
           </div>
           <h3 class="font-bold text-slate-800 mb-6 leading-relaxed">
             {{ q.text }}
           </h3>
-
           <div class="space-y-3">
             <button
               v-for="(choice, cIdx) in q.choices"
@@ -153,8 +160,7 @@ const deadlineString = computed(() => {
                   : 'border-slate-100 hover:bg-slate-50 text-slate-600'
               "
             >
-              <span class="mr-2 opacity-50">{{ cIdx + 1 }}.</span>
-              {{ choice }}
+              <span class="mr-2 opacity-50">{{ cIdx + 1 }}.</span> {{ choice }}
             </button>
           </div>
         </div>
@@ -168,7 +174,9 @@ const deadlineString = computed(() => {
       </div>
 
       <div
-        v-else-if="activeExam.status === 'released' && userSubmission"
+        v-else-if="
+          activeExam.status === 'released' && userSubmission && activeExam.stats
+        "
         class="animate-fade-in space-y-6"
       >
         <div
@@ -185,52 +193,107 @@ const deadlineString = computed(() => {
           <p
             class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2"
           >
-            RESULT
+            JUDGMENT
           </p>
           <h2
-            class="text-6xl font-black mb-6"
+            class="text-6xl font-black mb-2"
             :class="judgeResult === '合格' ? 'text-red-500' : 'text-blue-500'"
           >
             {{ judgeResult }}
           </h2>
-
-          <div class="grid grid-cols-2 gap-4 bg-slate-50 rounded-2xl p-4">
-            <div>
-              <p class="text-[10px] text-slate-400 font-bold mb-1">
-                あなたの点数
-              </p>
-              <p class="text-2xl font-black text-slate-800">
-                {{ userSubmission.score }}<span class="text-sm ml-1">点</span>
-              </p>
-            </div>
-            <div>
-              <p class="text-[10px] text-slate-400 font-bold mb-1">
-                受験者平均
-              </p>
-              <p class="text-2xl font-black text-slate-600">
-                {{ activeExam.stats?.average
-                }}<span class="text-sm ml-1">点</span>
-              </p>
-            </div>
-          </div>
-
-          <div class="mt-4 text-xs font-bold text-slate-500">
-            合格ボーダー: {{ activeExam.stats?.borderScore }}点以上 /
-            {{ activeExam.stats?.totalParticipants }}人中
-          </div>
-        </div>
-
-        <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
-          <h3 class="font-bold text-slate-700 mb-2">💡 学習アドバイス</h3>
           <p
-            class="text-sm text-slate-600 leading-relaxed"
-            v-if="judgeResult === '合格'"
+            v-if="judgeResult === '不合格'"
+            class="text-xs font-bold text-slate-500 bg-slate-100 inline-block px-3 py-1 rounded-full mb-4"
           >
-            おめでとうございます！基礎知識はバッチリです。この調子で過去問演習を続け、応用力を磨きましょう。
+            原因: {{ failReason }}
           </p>
-          <p class="text-sm text-slate-600 leading-relaxed" v-else>
-            今回は残念な結果でしたが、弱点を知る良い機会です。平均点との差を埋めるため、間違えた分野（基礎看護など）を重点的に復習しましょう。
-          </p>
+
+          <div class="space-y-3 mt-4">
+            <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+              <div class="flex justify-between items-center mb-1">
+                <span class="text-xs font-bold text-red-500">必修問題</span>
+                <span class="text-[10px] text-slate-400"
+                  >ボーダー: {{ activeExam.stats.mandatoryBorder }}点</span
+                >
+              </div>
+              <div class="flex items-end gap-1">
+                <span
+                  class="text-2xl font-black text-slate-800"
+                  :class="{
+                    'text-red-500':
+                      userSubmission.mandatoryScore <
+                      activeExam.stats.mandatoryBorder,
+                  }"
+                >
+                  {{ userSubmission.mandatoryScore }}
+                </span>
+                <span class="text-xs font-bold text-slate-400 mb-1"
+                  >/ {{ activeExam.stats.mandatoryMax }}点</span
+                >
+                <span
+                  class="ml-auto text-xs font-bold px-2 py-0.5 rounded"
+                  :class="
+                    userSubmission.mandatoryScore >=
+                    activeExam.stats.mandatoryBorder
+                      ? 'bg-green-100 text-green-600'
+                      : 'bg-red-100 text-red-600'
+                  "
+                >
+                  {{
+                    userSubmission.mandatoryScore >=
+                    activeExam.stats.mandatoryBorder
+                      ? "クリア"
+                      : "不可"
+                  }}
+                </span>
+              </div>
+            </div>
+
+            <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+              <div class="flex justify-between items-center mb-1">
+                <span class="text-xs font-bold text-blue-500">一般・状況</span>
+                <span class="text-[10px] text-slate-400"
+                  >ボーダー: {{ activeExam.stats.generalBorder }}点</span
+                >
+              </div>
+              <div class="flex items-end gap-1">
+                <span
+                  class="text-2xl font-black text-slate-800"
+                  :class="{
+                    'text-blue-500':
+                      userSubmission.generalScore <
+                      activeExam.stats.generalBorder,
+                  }"
+                >
+                  {{ userSubmission.generalScore }}
+                </span>
+                <span class="text-xs font-bold text-slate-400 mb-1"
+                  >/ {{ activeExam.stats.generalMax }}点</span
+                >
+                <span
+                  class="ml-auto text-xs font-bold px-2 py-0.5 rounded"
+                  :class="
+                    userSubmission.generalScore >=
+                    activeExam.stats.generalBorder
+                      ? 'bg-green-100 text-green-600'
+                      : 'bg-red-100 text-red-600'
+                  "
+                >
+                  {{
+                    userSubmission.generalScore >=
+                    activeExam.stats.generalBorder
+                      ? "クリア"
+                      : "不可"
+                  }}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-4 text-[10px] font-bold text-slate-400">
+            受験者数: {{ activeExam.stats.totalParticipants }}人 | 平均点(一般):
+            {{ activeExam.stats.generalAverage }}点
+          </div>
         </div>
       </div>
 
@@ -244,12 +307,6 @@ const deadlineString = computed(() => {
           現在、集計期間中です。<br />
           結果発表までしばらくお待ちください。
         </p>
-        <div class="inline-block bg-slate-100 px-6 py-3 rounded-xl">
-          <p class="text-xs font-bold text-slate-400 mb-1">自己採点（素点）</p>
-          <p class="text-2xl font-black text-slate-700">
-            {{ userSubmission.score }} / 30点
-          </p>
-        </div>
       </div>
 
       <div v-else class="space-y-6">
@@ -270,44 +327,6 @@ const deadlineString = computed(() => {
           </div>
           <div class="absolute -bottom-10 -right-10 text-9xl opacity-20">
             📝
-          </div>
-        </div>
-
-        <div
-          class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 space-y-4"
-        >
-          <div class="flex items-center gap-4">
-            <div
-              class="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center text-xl"
-            >
-              ⏰
-            </div>
-            <div>
-              <p class="font-bold text-slate-700">制限時間なし</p>
-              <p class="text-xs text-slate-400">自分のペースで解けます</p>
-            </div>
-          </div>
-          <div class="flex items-center gap-4">
-            <div
-              class="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center text-xl"
-            >
-              🔢
-            </div>
-            <div>
-              <p class="font-bold text-slate-700">全30問</p>
-              <p class="text-xs text-slate-400">ランダムに出題されます</p>
-            </div>
-          </div>
-          <div class="flex items-center gap-4">
-            <div
-              class="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center text-xl"
-            >
-              📊
-            </div>
-            <div>
-              <p class="font-bold text-slate-700">偏差値・合否判定</p>
-              <p class="text-xs text-slate-400">締切後に結果を一斉公開</p>
-            </div>
           </div>
         </div>
 

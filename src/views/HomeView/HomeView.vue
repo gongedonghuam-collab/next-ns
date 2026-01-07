@@ -234,8 +234,6 @@
                   </div>
                 </div>
               </section>
-
-              <JsonUploader />
             </div>
           </template>
         </div>
@@ -329,7 +327,6 @@
 import { ref, onMounted, computed } from "vue";
 import { useRouter } from "vue-router";
 import { useNextNs } from "@/composables/useNextNs";
-import JsonUploader from "@/components/JsonUploader.vue";
 import TheBottomNav from "@/components/TheBottomNav/TheBottomNav.vue";
 import MyPage from "@/components/MyPage/MyPage.vue";
 import SettingsTab from "@/components/SettingsTab/SettingsTab.vue";

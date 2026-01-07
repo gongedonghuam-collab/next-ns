@@ -30,14 +30,21 @@
 
         <div
           v-if="activeExam"
-          class="bg-indigo-50 p-5 rounded-xl border border-indigo-100 mb-6"
+          class="bg-indigo-50 p-5 rounded-xl border border-indigo-100 mb-6 relative"
         >
-          <div class="flex justify-between items-start mb-2">
+          <button
+            @click="deleteMockExam(activeExam.id)"
+            class="absolute top-4 right-4 text-xs text-red-500 font-bold hover:underline bg-white px-2 py-1 rounded shadow-sm"
+          >
+            🗑️ 削除
+          </button>
+
+          <div class="flex justify-between items-start mb-2 pr-16">
             <h3 class="font-black text-indigo-800 text-lg">
               {{ activeExam.title }}
             </h3>
             <span
-              class="text-xs font-bold px-2 py-1 rounded bg-white text-indigo-600 border border-indigo-100"
+              class="text-xs font-bold px-2 py-1 rounded bg-white text-indigo-600 border border-indigo-100 whitespace-nowrap"
             >
               {{ activeExam.status === "active" ? "開催中" : "公開済み" }}
             </span>
@@ -69,15 +76,21 @@
                 </p>
               </div>
               <div>
-                <p class="text-[9px] text-slate-400">平均点</p>
-                <p class="font-bold">{{ activeExam.stats?.average }}点</p>
-              </div>
-              <div>
-                <p class="text-[9px] text-slate-400">合格点</p>
-                <p class="font-bold text-red-500">
-                  {{ activeExam.stats?.borderScore }}点
+                <p class="text-[9px] text-slate-400">平均(一般)</p>
+                <p class="font-bold">
+                  {{ activeExam.stats?.generalAverage }}点
                 </p>
               </div>
+              <div>
+                <p class="text-[9px] text-slate-400">合格点(一般)</p>
+                <p class="font-bold text-red-500">
+                  {{ activeExam.stats?.generalBorder }}点
+                </p>
+              </div>
+            </div>
+            <div class="mt-2 text-center text-[10px] text-slate-400">
+              必修合格点: {{ activeExam.stats?.mandatoryBorder }}点 /
+              {{ activeExam.stats?.mandatoryMax }}点
             </div>
           </div>
         </div>
@@ -103,6 +116,7 @@
           </p>
         </div>
       </section>
+
       <section
         class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200"
       >
@@ -194,6 +208,8 @@
           </button>
         </form>
       </section>
+
+      <JsonUploader />
 
       <section class="space-y-4">
         <div class="flex justify-between items-center">
@@ -314,7 +330,8 @@ import { ref, onMounted, computed, reactive } from "vue";
 import { useRouter } from "vue-router";
 import { useNextNs } from "@/composables/useNextNs";
 import { useAdmin } from "@/composables/useAdmin";
-import { useMockExam } from "@/composables/useMockExam"; // 追加
+import { useMockExam } from "@/composables/useMockExam";
+import JsonUploader from "@/components/JsonUploader.vue"; // ★ 追加
 import type { Question } from "@/types";
 
 const router = useRouter();
@@ -325,15 +342,19 @@ const {
 } = useNextNs();
 const { addQuestion, updateQuestion, removeQuestion, loading } = useAdmin();
 
-// ★ 追加: 模試ロジック
-const { activeExam, fetchLatestExam, createMockExam, closeAndReleaseExam } =
-  useMockExam();
+// ★ 追加: 模試ロジック (deleteMockExam を追加)
+const {
+  activeExam,
+  fetchLatestExam,
+  createMockExam,
+  closeAndReleaseExam,
+  deleteMockExam,
+} = useMockExam();
 const newMockTitle = ref("");
 
 const searchQuery = ref("");
 const editingId = ref<string | null>(null);
 
-// 新規作成フォーム用データ
 const initNewQ = () => ({
   examYear: "",
   questionNumber: "",
@@ -345,23 +366,19 @@ const initNewQ = () => ({
   tags: [] as string[],
 });
 const newQ = reactive(initNewQ());
-
-// 編集フォーム用データ
 const editForm = reactive(initNewQ());
 
 onMounted(async () => {
   await fetchAllQuestions();
-  await fetchLatestExam(); // 追加
+  await fetchLatestExam();
 });
 
-// ★ 追加: 模試作成ハンドラ
 const handleCreateMock = async () => {
   if (!newMockTitle.value) return alert("タイトルを入力してください");
-  await createMockExam(newMockTitle.value, 3, masterQuestions.value); // 3日後を締切に
+  await createMockExam(newMockTitle.value, 3, masterQuestions.value);
   newMockTitle.value = "";
 };
 
-// 検索フィルタリング
 const filteredQuestions = computed(() => {
   if (!searchQuery.value) return masterQuestions.value;
   const q = searchQuery.value.toLowerCase();
@@ -373,19 +390,16 @@ const filteredQuestions = computed(() => {
   );
 });
 
-// 新規追加
 const handleSubmitNew = async () => {
   if (newQ.correctIndices.length === 0) {
     alert("正解の選択肢にチェックを入れてください");
     return;
   }
   await addQuestion(newQ as any);
-  // リセット & 再読み込み
   Object.assign(newQ, initNewQ());
   window.location.reload();
 };
 
-// 編集開始
 const startEdit = (q: Question) => {
   editingId.value = q.id;
   const data = JSON.parse(JSON.stringify(q));
@@ -393,13 +407,11 @@ const startEdit = (q: Question) => {
   Object.assign(editForm, data);
 };
 
-// 編集キャンセル
 const cancelEdit = () => {
   editingId.value = null;
   Object.assign(editForm, initNewQ());
 };
 
-// 更新実行
 const handleUpdate = async (id: string) => {
   if (editForm.correctIndices.length === 0) {
     alert("正解を選択してください");
@@ -410,7 +422,6 @@ const handleUpdate = async (id: string) => {
   window.location.reload();
 };
 
-// 削除実行
 const handleDelete = async (id: string) => {
   await removeQuestion(id);
   window.location.reload();
