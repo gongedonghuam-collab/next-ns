@@ -1,49 +1,61 @@
-"use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
-Object.defineProperty(exports, "__esModule", { value: true });
-const v2_1 = require("firebase-functions/v2");
-const admin = __importStar(require("firebase-admin"));
-// Firebase Adminの初期化
-if (admin.apps.length === 0) {
-    admin.initializeApp();
-}
-// リージョン等の設定
-(0, v2_1.setGlobalOptions)({
-    region: "asia-northeast1",
-    memory: "1GiB",
-    maxInstances: 10,
-});
-// 現在、NextNsアプリではサーバーサイド(Cloud Functions)の処理は使用していないため
-// 定義を空にしています。将来的に通知機能などを追加する場合はここに記述します。
+const functions = require("firebase-functions");
+const admin = require("firebase-admin");
+// const stripe = require("stripe")(
+//   "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"
+// );
+admin.initializeApp();
+// // 1. 決済セッションを作成する関数（フロントから呼ばれる）
+// exports.createCheckoutSession = functions.https.onCall(
+//   async (data, context) => {
+//     // ログインしていないと拒否
+//     if (!context.auth) {
+//       throw new functions.https.HttpsError(
+//         "unauthenticated",
+//         "User must be logged in"
+//       );
+//     }
+//     const uid = context.auth.uid;
+//     const userEmail = context.auth.token.email;
+//     // Stripeで決済セッションを作成
+//     const session = await stripe.checkout.sessions.create({
+//       payment_method_types: ["card"],
+//       mode: "subscription", // サブスクリプションモード
+//       line_items: [
+//         {
+//           price: "price_1SlrgxCRUPdCre1Qlrcvt90g",
+//           quantity: 1,
+//         },
+//       ],
+//       customer_email: userEmail,
+//       metadata: { uid: uid }, // 誰が買ったかわかるようにUIDを埋め込む
+//       success_url: "http://localhost:5173/result?status=success", // 決済成功時の戻り先
+//       cancel_url: "http://localhost:5173/premium", // キャンセル時の戻り先
+//     });
+//     return { url: session.url };
+//   }
+// );
+// // 2. 決済完了を受け取るWebhook（Stripeから自動で呼ばれる）
+// exports.stripeWebhook = functions.https.onRequest(async (req, res) => {
+//   const sig = req.headers["stripe-signature"];
+//   const endpointSecret =
+//     "Stripeダッシュボードで取得するWebhook署名シークレット";
+//   let event;
+//   try {
+//     event = stripe.webhooks.constructEvent(req.rawBody, sig, endpointSecret);
+//   } catch (err) {
+//     return res.status(400).send(`Webhook Error: ${err.message}`);
+//   }
+//   // 決済完了イベントのみ処理
+//   if (event.type === "checkout.session.completed") {
+//     const session = event.data.object;
+//     const uid = session.metadata.uid;
+//     // Firestoreのユーザー情報を更新してプレミアムにする
+//     await admin.firestore().collection("users").doc(uid).update({
+//       isPremium: true,
+//       stripeCustomerId: session.customer,
+//       subscriptionId: session.subscription,
+//       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+//     });
+//   }
+//   res.json({ received: true });
+// });

@@ -9,6 +9,10 @@ import {
   getDocs,
   addDoc,
   deleteDoc,
+  updateDoc,
+  setDoc,
+  increment,
+  orderBy,
   serverTimestamp,
   where,
 } from "firebase/firestore";
@@ -33,7 +37,7 @@ const loading = ref(false);
 const currentSessionIndex = ref(0);
 const selectedPeriod = ref<"all" | "am" | "pm">("all");
 
-// ★ 結果画面用ステート
+// 結果画面用ステート
 const sessionResult = ref<{
   correct: number;
   total: number;
@@ -42,11 +46,27 @@ const sessionResult = ref<{
   judgeText: string;
 } | null>(null);
 
+// ランキングデータ
+const rankingList = ref<User[]>([]);
+
+// 最新の学習ログID（AI解説保存用）
+const lastLogId = ref<string | null>(null);
+
+// ログから算出する一時的な経験値（表示用）
 const totalExp = computed(() =>
   studyLogs.value.reduce((t, log) => t + (log.isCorrect ? 20 : 5), 0)
 );
-const currentLevel = computed(() => Math.floor(totalExp.value / 100) + 1);
-const levelProgress = computed(() => totalExp.value % 100);
+
+const currentLevel = computed(() => {
+  const exp = currentUser.value?.totalExp || totalExp.value;
+  return Math.floor(exp / 100) + 1;
+});
+
+const levelProgress = computed(() => {
+  const exp = currentUser.value?.totalExp || totalExp.value;
+  return exp % 100;
+});
+
 const currentRank = computed(() => {
   const lv = currentLevel.value;
   if (lv < 5) return "新人ナースの卵";
@@ -176,7 +196,12 @@ export function useNextNs() {
       if (!log.isCorrect || log.confidence !== "ok") {
         reviewMap.set(log.question.id, {
           ...log.question,
-          lastResult: { isCorrect: log.isCorrect, confidence: log.confidence },
+          lastResult: {
+            isCorrect: log.isCorrect,
+            confidence: log.confidence,
+            userChoice: log.userChoice,
+            aiAdvice: log.aiAdvice,
+          },
         });
       } else {
         reviewMap.delete(log.question.id);
@@ -250,9 +275,12 @@ export function useNextNs() {
   ) => {
     const uid = currentUser.value?.uid;
     if (!uid) return;
+
     q.lastResult = { isCorrect, confidence, userChoice: [choice] };
     saveSession();
-    await addDoc(collection(db, "study_logs"), {
+
+    const expGained = isCorrect ? 20 : 5;
+    const logRef = await addDoc(collection(db, "study_logs"), {
       userId: uid,
       questionId: q.id,
       question: q,
@@ -261,21 +289,65 @@ export function useNextNs() {
       confidence,
       createdAt: serverTimestamp(),
     });
-    await Promise.all([fetchReviewQuestions(), fetchHistory()]);
+
+    lastLogId.value = logRef.id;
+
+    try {
+      const userRef = doc(db, "users", uid);
+      await setDoc(
+        userRef,
+        {
+          email: currentUser.value?.email,
+          totalExp: increment(expGained),
+          lastActiveAt: serverTimestamp(),
+          displayName: currentUser.value?.displayName || null,
+          photoURL: currentUser.value?.photoURL || null,
+          role: currentUser.value?.role || "student",
+        },
+        { merge: true }
+      );
+
+      if (currentUser.value) {
+        currentUser.value.totalExp =
+          (currentUser.value.totalExp || 0) + expGained;
+      }
+    } catch (e) {
+      console.error("Exp update failed", e);
+    }
+
+    fetchReviewQuestions();
+    fetchHistory();
   };
 
   const goToNext = () => {
     currentSessionIndex.value++;
+    aiResponse.value = "";
+    lastLogId.value = null;
     saveSession();
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const askAI = async (q: Question) => {
+  // ★★★ AI解説リクエスト（完全無料・無制限版） ★★★
+  const askAI = async (q: Question): Promise<boolean> => {
     const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-    if (!apiKey) return (aiResponse.value = "APIキー未設定");
+    if (!apiKey) {
+      aiResponse.value = "APIキー未設定";
+      return false;
+    }
+    if (!currentUser.value) return false;
+
+    // 既に回答があれば表示
+    if (q.lastResult?.aiAdvice) {
+      aiResponse.value = q.lastResult.aiAdvice;
+      return true;
+    }
+
+    // 思考中フラグON
     isAiThinking.value = true;
     aiResponse.value = "";
+
     try {
+      // --- モデルリスト取得ロジック ---
       const listUrl = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`;
       const listResponse = await fetch(listUrl);
       const listData = await listResponse.json();
@@ -289,27 +361,46 @@ export function useNextNs() {
         "models/",
         ""
       );
+      // ------------------------------------------------
+
       const genAI = new GoogleGenerativeAI(apiKey);
       const model = genAI.getGenerativeModel({ model: targetModel });
-      const prompt = `あなたは看護学生の学習をサポートするチューターです。「正解は ${q.correctIndices.map(
+      const prompt = `あなたは看護学生の学習をサポートする優しい専属チューターです。
+      問題「${q.text}」に対し、なぜ正解が ${q.correctIndices.map(
         (i) => i + 1
-      )} です」から始めて、問題 「${q.text}」 を詳しく解説してください。`;
+      )} 番なのか、
+      他の選択肢がなぜ間違いなのかを、学生が覚えやすいように噛み砕いて解説してください。
+      また、この問題に関連する「重要ポイント」も1つ教えてください。`;
+
       const res = await model.generateContent(prompt);
-      aiResponse.value = res.response.text();
-    } catch (e: any) {
-      aiResponse.value = "AIエラー: " + e.message;
-    } finally {
+      const text = res.response.text();
+
+      // ★★★ 思考完了・タイプライター演出開始 ★★★
       isAiThinking.value = false;
+
+      const chars = text.split("");
+      for (const char of chars) {
+        aiResponse.value += char;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+
+      if (lastLogId.value) {
+        await updateDoc(doc(db, "study_logs", lastLogId.value), {
+          aiAdvice: text,
+        });
+      }
+      if (q.lastResult) q.lastResult.aiAdvice = text;
+
+      return true;
+    } catch (e: any) {
+      isAiThinking.value = false;
+      aiResponse.value = "AIエラー: " + e.message;
+      return true;
     }
   };
 
   const cleanupDuplicates = async () => {
-    if (
-      !confirm(
-        "⚠️ 重複している問題を自動削除しますか？\n(同じ年度・番号の問題を1つ残して他を削除します)"
-      )
-    )
-      return;
+    if (!confirm("重複を削除しますか？")) return;
     loading.value = true;
     try {
       const seen = new Set();
@@ -322,19 +413,13 @@ export function useNextNs() {
           seen.add(key);
         }
       });
-      if (toDeleteIds.length === 0) {
-        alert("✅ 重複データは見つかりませんでした。");
-        return;
-      }
+      if (toDeleteIds.length === 0) return;
       for (const id of toDeleteIds) {
         await deleteDoc(doc(db, "questions", id));
       }
-      alert(
-        `✨ ${toDeleteIds.length}件の重複を削除しました。再読み込みします。`
-      );
       window.location.reload();
     } catch (e: any) {
-      alert("❌ 削除中にエラーが発生しました: " + e.message);
+      alert("Error: " + e.message);
     } finally {
       loading.value = false;
     }
@@ -385,7 +470,32 @@ export function useNextNs() {
     }
   };
 
-  // ★ リザルト計算用（外部から渡された数で計算する場合）
+  const fetchRanking = async () => {
+    loading.value = true;
+    try {
+      const q = query(
+        collection(db, "users"),
+        orderBy("totalExp", "desc"),
+        limit(50)
+      );
+      const snap = await getDocs(q);
+      rankingList.value = snap.docs.map((d) => {
+        const data = d.data();
+        return {
+          uid: d.id,
+          email: data.email || "",
+          role: data.role || "student",
+          createdAt: data.createdAt,
+          ...data,
+        } as User;
+      });
+    } catch (e) {
+      console.error("Ranking fetch error", e);
+    } finally {
+      loading.value = false;
+    }
+  };
+
   const setSessionResult = (correct: number, total: number) => {
     if (total === 0) return;
     const rate = Math.round((correct / total) * 100);
@@ -408,7 +518,6 @@ export function useNextNs() {
     sessionResult.value = { correct, total, rate, judge, judgeText };
   };
 
-  // ★ 現在の questions から自動計算してリザルト設定
   const finishSession = () => {
     const total = questions.value.length;
     const correct = questions.value.filter(
@@ -436,12 +545,39 @@ export function useNextNs() {
     currentSessionIndex,
     aiResponse,
     isAiThinking,
-    sessionResult, // 追加
+    sessionResult,
+    rankingList,
+    lastLogId,
     initAuth: () =>
       onAuthStateChanged(auth, async (user) => {
         if (user) {
           const snap = await getDoc(doc(db, "users", user.uid));
-          currentUser.value = { uid: user.uid, ...snap.data() } as User;
+          if (snap.exists()) {
+            const userData = snap.data();
+            currentUser.value = {
+              uid: user.uid,
+              email: userData.email || user.email || "",
+              role: userData.role || "student",
+              createdAt: userData.createdAt,
+              displayName: userData.displayName,
+              photoURL: userData.photoURL,
+              totalExp: userData.totalExp || 0,
+              lastActiveAt: userData.lastActiveAt,
+              isPremium: true, // 常にプレミアムとして扱う（UI調整用）
+              aiUsage: { count: 0, lastUsedAt: null },
+            } as User;
+          } else {
+            currentUser.value = {
+              uid: user.uid,
+              email: user.email || "",
+              role: "student",
+              createdAt: new Date(),
+              totalExp: 0,
+              isPremium: true,
+              aiUsage: { count: 0, lastUsedAt: null },
+            } as User;
+          }
+
           await Promise.all([
             fetchAllQuestions(),
             fetchHistory(),
@@ -463,8 +599,9 @@ export function useNextNs() {
     clearSession,
     goToNext,
     cleanupDuplicates,
-    finishSession, // 追加
-    setSessionResult, // 追加
+    setSessionResult,
+    finishSession,
+    fetchRanking,
     logout: async () => {
       clearSession();
       await signOut(auth);

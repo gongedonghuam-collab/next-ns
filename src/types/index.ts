@@ -1,67 +1,48 @@
-/**
- * NextNs (NurseCode) Type Definitions
- */
+export interface Question {
+  id: string;
+  examYear: string; // "第113回"
+  questionNumber: string; // "午前1"
+  type: "mandatory" | "general" | "situation"; // 必修 | 一般 | 状況設定
+  text: string;
+  choices: string[];
+  correctIndices: number[]; // [0] for A (indices)
+  explanation?: string;
+  imageUrl?: string; // 画像問題用URL
+  tags?: string[];
+  lastResult?: {
+    isCorrect: boolean;
+    userChoice: number[];
+    confidence?: "ok" | "so-so" | "ng"; // ⭕️ 🔺 ❌
+    answeredAt?: Date;
+    aiAdvice?: string; // AIのアドバイス一時保存用
+  };
+}
 
-// 1. ユーザー情報
-export type User = {
+export interface User {
   uid: string;
   email: string;
   displayName?: string;
   photoURL?: string;
-  role: "student" | "admin";
+  role: "admin" | "student";
   createdAt: any;
-};
-
-// 2. ユーザーの学習成績
-export type UserProfile = {
-  uid: string;
-  targetExam: string;
-  stats: {
-    totalAnswered: number;
-    totalCorrect: number;
-    tagAccuracy: { [key: string]: number };
+  totalExp?: number;
+  lastActiveAt?: any;
+  // ★ ここが追加された重要な部分です
+  isPremium?: boolean;
+  aiUsage?: {
+    count: number; // 今日の使用回数
+    lastUsedAt: any; // 最後に使った日
   };
-};
+}
 
-// 3. 問題データ
-export type Question = {
-  id: string;
-  examYear: string;
-  questionNumber: string;
-  type: "mandatory" | "general" | "situation";
-  text: string;
-  imageUrl?: string;
-  choices: string[];
-  correctIndices: number[];
-  explanation: string;
-  tags: string[];
-
-  // ★追加: 復習モード用（前回の結果を一時的に持たせる）
-  lastResult?: {
-    isCorrect: boolean;
-    confidence?: "ok" | "so-so" | "ng";
-    userChoice?: number[];
-  };
-};
-
-// 4. 学習履歴 (ログ)
-export type StudyLog = {
-  id: string;
+export interface StudyLog {
+  id?: string;
   userId: string;
   questionId: string;
-  question: Question;
-
+  question?: Question; // 履歴表示用に丸ごと持つことも
   userChoice: number[];
   isCorrect: boolean;
-  timeTaken: number;
-
-  createdAt: any;
-
-  // 自信度
   confidence?: "ok" | "so-so" | "ng";
-
-  aiChat?: {
-    userQuestion: string;
-    aiAnswer: string;
-  }[];
-};
+  createdAt: any;
+  aiAdvice?: string; // AIのアドバイス履歴用
+}

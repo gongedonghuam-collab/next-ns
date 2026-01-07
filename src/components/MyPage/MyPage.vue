@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, computed } from "vue";
+import { useRouter } from "vue-router";
 import { useNextNs } from "@/composables/useNextNs";
 import {
   Chart as ChartJS,
@@ -21,6 +22,7 @@ ChartJS.register(
   Legend
 );
 
+const router = useRouter();
 const {
   fetchHistory,
   studyLogs,
@@ -43,8 +45,9 @@ const chartData = computed(() => {
         {
           label: "正答率 (%)",
           data: [0, 0, 0, 0, 0, 0],
-          backgroundColor: "rgba(59, 130, 246, 0.2)",
-          borderColor: "#3b82f6",
+          backgroundColor: "rgba(99, 102, 241, 0.2)",
+          borderColor: "#6366f1",
+          pointBackgroundColor: "#6366f1",
         },
       ],
     };
@@ -92,12 +95,12 @@ const chartData = computed(() => {
     datasets: [
       {
         label: "正答率 (%)",
-        backgroundColor: "rgba(59, 130, 246, 0.2)",
-        borderColor: "#3b82f6",
-        pointBackgroundColor: "#3b82f6",
+        backgroundColor: "rgba(99, 102, 241, 0.2)",
+        borderColor: "#6366f1",
+        pointBackgroundColor: "#6366f1",
         pointBorderColor: "#fff",
         pointHoverBackgroundColor: "#fff",
-        pointHoverBorderColor: "#3b82f6",
+        pointHoverBorderColor: "#6366f1",
         data: dataValues,
       },
     ],
@@ -127,18 +130,26 @@ const chartOptions = {
 
 const formatDate = (date: any) => {
   if (!date) return "";
-  const d =
-    date instanceof Date ? date : date.toDate ? date.toDate() : new Date(date);
-  return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(
-    d.getMinutes()
-  ).padStart(2, "0")}`;
+  try {
+    const d =
+      date instanceof Date
+        ? date
+        : date.toDate
+        ? date.toDate()
+        : new Date(date);
+    return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(
+      d.getMinutes()
+    ).padStart(2, "0")}`;
+  } catch {
+    return "";
+  }
 };
 </script>
 
 <template>
-  <div class="animate-fade-in">
+  <div class="animate-fade-in space-y-10">
     <div
-      class="bg-gradient-to-br from-indigo-600 to-purple-700 rounded-3xl p-6 text-white shadow-lg shadow-indigo-200 mb-6 relative overflow-hidden"
+      class="bg-gradient-to-br from-indigo-600 to-purple-700 rounded-3xl p-6 text-white shadow-xl shadow-indigo-200 relative overflow-hidden"
     >
       <div class="relative z-10">
         <div class="flex justify-between items-start mb-4">
@@ -174,72 +185,96 @@ const formatDate = (date: any) => {
     </div>
 
     <div
-      class="bg-white p-4 rounded-3xl shadow-sm border border-slate-100 mb-8 relative"
+      class="bg-white p-5 rounded-3xl shadow-md border border-slate-200 relative"
     >
-      <h3 class="absolute top-4 left-6 text-xs font-bold text-slate-400">
-        分野別傾向
-      </h3>
-      <div class="h-[250px] w-full mt-2">
+      <div
+        class="flex items-center gap-2 mb-4 border-l-4 border-indigo-500 pl-3"
+      >
+        <h3 class="text-sm font-black text-slate-700">分野別傾向</h3>
+      </div>
+      <div class="h-[250px] w-full">
         <Radar v-if="chartData" :data="chartData" :options="chartOptions" />
       </div>
     </div>
 
     <div>
-      <h3 class="font-bold text-slate-700 text-lg mb-4 px-1">学習履歴</h3>
+      <div
+        class="flex items-center gap-2 mb-4 border-l-4 border-indigo-500 pl-3"
+      >
+        <h3 class="text-lg font-black text-slate-700">学習履歴</h3>
+      </div>
 
       <div v-if="loading" class="text-center py-10">
         <div
-          class="animate-spin w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full mx-auto"
+          class="animate-spin w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full mx-auto"
         ></div>
       </div>
 
       <div
         v-else-if="studyLogs.length === 0"
-        class="text-center py-10 text-slate-400"
+        class="text-center py-12 bg-white rounded-3xl border-2 border-dashed border-slate-200"
       >
-        <p class="text-3xl mb-2">📝</p>
-        <p class="text-xs font-bold">まだ履歴がありません</p>
+        <p class="text-4xl mb-2">📝</p>
+        <p class="text-sm font-bold text-slate-400">まだ履歴がありません</p>
       </div>
 
-      <div v-else class="max-h-[400px] overflow-y-auto pr-2 no-scrollbar">
-        <div class="space-y-3">
+      <div v-else class="max-h-[600px] overflow-y-auto pr-1 no-scrollbar p-1">
+        <div class="space-y-4">
           <div
             v-for="log in studyLogs"
             :key="log.id"
-            class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-start gap-3 transition hover:border-blue-200"
+            @click="router.push(`/question/${log.questionId}`)"
+            class="p-5 bg-white rounded-2xl shadow border border-slate-200 relative group hover:border-indigo-300 hover:shadow-lg transition-all cursor-pointer active:scale-[0.98]"
           >
             <div
-              class="w-10 h-10 rounded-full flex items-center justify-center text-lg flex-shrink-0"
-              :class="
-                log.isCorrect
-                  ? 'bg-blue-50 text-blue-500'
-                  : 'bg-red-50 text-red-500'
-              "
+              class="flex justify-between items-center text-[10px] font-bold text-slate-400 mb-3"
             >
-              {{ log.isCorrect ? "⭕️" : "❌" }}
+              <div class="flex items-center gap-2">
+                <span
+                  class="px-3 py-1 rounded-full border"
+                  :class="
+                    log.isCorrect
+                      ? 'bg-blue-50 text-blue-600 border-blue-100'
+                      : 'bg-red-50 text-red-500 border-red-100'
+                  "
+                >
+                  {{ log.isCorrect ? "正解" : "不正解" }}
+                </span>
+                <span class="bg-slate-100 px-2 py-0.5 rounded">{{
+                  formatDate(log.createdAt)
+                }}</span>
+              </div>
+              <span class="font-mono text-slate-300"
+                >ID:{{ log.questionId.slice(0, 4) }}</span
+              >
             </div>
 
-            <div class="flex-1 min-w-0">
-              <div class="flex justify-between items-start mb-1">
+            <p
+              class="text-sm font-bold text-slate-700 leading-relaxed line-clamp-2 mb-4"
+            >
+              {{ log.question?.text || "問題文なし" }}
+            </p>
+
+            <div
+              class="flex justify-between items-end border-t border-slate-50 pt-3"
+            >
+              <div class="flex gap-1 overflow-hidden">
                 <span
-                  class="text-[10px] font-bold text-slate-400 bg-slate-50 px-2 py-0.5 rounded"
-                >
-                  {{ formatDate(log.createdAt) }}
-                </span>
-              </div>
-              <p
-                class="text-sm font-bold text-slate-700 line-clamp-2 leading-relaxed"
-              >
-                {{ log.question?.text || "問題文なし" }}
-              </p>
-              <div class="mt-2 flex gap-1 overflow-hidden">
-                <span
-                  v-for="tag in log.question?.tags"
+                  v-for="tag in log.question?.tags?.slice(0, 2)"
                   :key="tag"
-                  class="text-[9px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded"
+                  class="text-[9px] text-slate-500 bg-slate-100 border border-slate-200 px-2 py-1 rounded-md"
                   >#{{ tag }}</span
                 >
               </div>
+              <span
+                class="text-[10px] text-indigo-600 font-bold flex items-center gap-1 group-hover:underline"
+              >
+                解説を見る
+                <span
+                  class="text-xs transition-transform group-hover:translate-x-1"
+                  >→</span
+                >
+              </span>
             </div>
           </div>
         </div>
@@ -263,12 +298,11 @@ const formatDate = (date: any) => {
   }
 }
 
-/* スクロールバーを非表示にする設定 */
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
 .no-scrollbar {
-  -ms-overflow-style: none; /* IE and Edge */
-  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 </style>

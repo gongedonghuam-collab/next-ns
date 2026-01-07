@@ -2,10 +2,20 @@
 import { ref, watch, computed } from "vue";
 import type { Question } from "@/types";
 import { useNextNs } from "@/composables/useNextNs";
+import { useRouter } from "vue-router";
 
-const { askAI, aiResponse, isAiThinking, toggleBookmark, bookmarkedIds } =
-  useNextNs();
+const router = useRouter();
+const {
+  askAI,
+  aiResponse,
+  isAiThinking,
+  toggleBookmark,
+  bookmarkedIds,
+  currentUser,
+} = useNextNs();
+
 const props = defineProps<{ question: Question; index: number }>();
+
 const emit = defineEmits<{
   (
     e: "answer",
@@ -16,11 +26,10 @@ const emit = defineEmits<{
 }>();
 
 const selectedIndex = ref<number | null>(null);
-const isAnswered = ref(false); // このコンポーネント内での回答フラグ
+const isAnswered = ref(false);
 const showAiComment = ref(false);
 const showPopup = ref<"correct" | "incorrect" | null>(null);
 
-// 問題が切り替わったら、全ての状態をリセットする（解き直しを可能にする）
 watch(
   () => props.question.id,
   () => {
@@ -39,28 +48,27 @@ const handleChoice = (idx: number) => {
 
 const submitWithConfidence = (confidence: "ok" | "so-so" | "ng") => {
   if (selectedIndex.value === null) return;
-
   const isCorrect = props.question.correctIndices.includes(selectedIndex.value);
-
-  // ポップアップ演出の開始
   showPopup.value = isCorrect ? "correct" : "incorrect";
-
-  // 判定フラグを立てて、親へ通知
   isAnswered.value = true;
   emit("answer", isCorrect, selectedIndex.value, confidence);
-
-  // 1.2秒後にポップアップを消す
   setTimeout(() => {
     showPopup.value = null;
   }, 1200);
 };
 
+// ★ AI解説ボタンの処理（単純化）
 const handleAskAi = async () => {
+  // 解説エリアを表示
   showAiComment.value = true;
+  // AI問い合わせ開始
   await askAI(props.question);
 };
 
-// 解説に表示する正解テキスト
+const hasSavedAiAdvice = computed(() => {
+  return !!props.question.lastResult?.aiAdvice;
+});
+
 const correctAnswerLabel = computed(() => {
   return props.question.correctIndices.map((i) => i + 1).join("・");
 });
@@ -206,27 +214,49 @@ const correctAnswerLabel = computed(() => {
       <button
         v-if="!showAiComment"
         @click="handleAskAi"
-        class="w-full py-4 bg-slate-900 text-white font-black rounded-2xl flex items-center justify-center gap-2 shadow-xl active:scale-95 transition"
+        class="w-full py-4 bg-indigo-900 text-white font-black rounded-2xl flex items-center justify-center gap-2 shadow-xl active:scale-95 transition overflow-hidden relative group"
       >
-        <span>🤖</span> AI先生に詳しく聞く
+        <div
+          class="absolute inset-0 bg-gradient-to-r from-indigo-500 to-purple-500 opacity-0 group-hover:opacity-100 transition duration-500"
+        ></div>
+        <span class="relative z-10 text-xl">🤖</span>
+        <span class="relative z-10">
+          {{
+            hasSavedAiAdvice
+              ? "📝 保存された解説を見る"
+              : "✨ AI先生に詳しく聞く"
+          }}
+        </span>
       </button>
 
       <div
         v-else
-        class="bg-indigo-50 p-6 rounded-[32px] border border-indigo-100 relative"
+        class="bg-indigo-50 p-6 rounded-[32px] border border-indigo-100 relative animate-fade-in"
       >
-        <div v-if="isAiThinking" class="text-center py-6">
-          <div
-            class="animate-spin w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full mx-auto mb-2"
-          ></div>
-          <p class="text-[10px] font-bold text-indigo-400">
-            AI Tutor is thinking...
+        <div
+          v-if="isAiThinking"
+          class="flex flex-col items-center justify-center py-8"
+        >
+          <div class="spinner mb-3"></div>
+          <p class="text-xs font-bold text-indigo-400 animate-pulse">
+            AI先生が思考中...
           </p>
         </div>
+
         <div
           v-else
           class="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap"
         >
+          <div
+            class="flex items-center gap-2 mb-2 text-indigo-800 font-bold border-b border-indigo-100 pb-2"
+          >
+            <span>🎓</span> AIチューターの解説
+            <span
+              v-if="hasSavedAiAdvice"
+              class="text-[9px] bg-indigo-200 text-indigo-700 px-2 py-0.5 rounded ml-auto"
+              >History</span
+            >
+          </div>
           {{ aiResponse }}
         </div>
       </div>
@@ -235,7 +265,6 @@ const correctAnswerLabel = computed(() => {
 </template>
 
 <style scoped>
-/* 判定ポップアップのアニメーション */
 .judge-pop-enter-active {
   animation: pop-in 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
@@ -270,6 +299,34 @@ const correctAnswerLabel = computed(() => {
   to {
     transform: translateY(0);
     opacity: 1;
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.5s ease-out;
+}
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ★★★ 追加：ぐるぐるスピナーのCSS ★★★ */
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 4px solid rgba(99, 102, 241, 0.2); /* 薄いインディゴ */
+  border-top-color: #4f46e5; /* 濃いインディゴ */
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
   }
 }
 </style>
