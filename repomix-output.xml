@@ -2157,154 +2157,6 @@ export function useAdmin() {
 }
 </file>
 
-<file path="src/composables/useNotifications.ts">
-import { ref } from "vue";
-import { getMessaging, getToken, onMessage } from "firebase/messaging";
-import { doc, setDoc, arrayUnion } from "firebase/firestore";
-import { db, auth } from "@/firebase";
-
-export interface NotificationItem {
-  id: string;
-  type: "reservation" | "cancel" | "info";
-  title: string;
-  message: string;
-  timestamp: Date;
-  isRead: boolean;
-}
-
-// グローバルステート
-const notifications = ref<NotificationItem[]>([]);
-const isDropdownOpen = ref(false);
-const STORAGE_KEY = "hairlink_notifications";
-
-// ★重要: Firebaseコンソールで取得したVAPIDキーを入れてください
-const VAPID_KEY = "YOUR_VAPID_KEY_HERE";
-
-export function useNotifications() {
-  // 履歴をローカルストレージから読み込む
-  const loadNotifications = () => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored);
-        notifications.value = parsed.map((n: any) => ({
-          ...n,
-          timestamp: new Date(n.timestamp),
-        }));
-      } catch (e) {
-        console.error("Failed to load notifications", e);
-      }
-    }
-  };
-
-  // 履歴をローカルストレージに保存
-  const saveNotifications = () => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(notifications.value));
-  };
-
-  // 通知を追加する
-  const addNotification = (
-    type: "reservation" | "cancel" | "info",
-    title: string,
-    message: string
-  ) => {
-    const newItem: NotificationItem = {
-      id: Date.now().toString(),
-      type,
-      title,
-      message,
-      timestamp: new Date(),
-      isRead: false,
-    };
-    notifications.value.unshift(newItem);
-
-    // 最大50件まで保存
-    if (notifications.value.length > 50) {
-      notifications.value.pop();
-    }
-
-    saveNotifications();
-
-    if (typeof navigator !== "undefined" && navigator.vibrate) {
-      navigator.vibrate(200);
-    }
-  };
-
-  const markAsRead = (id: string) => {
-    const target = notifications.value.find((n) => n.id === id);
-    if (target) {
-      target.isRead = true;
-      saveNotifications();
-    }
-  };
-
-  const markAllRead = () => {
-    notifications.value.forEach((n) => (n.isRead = true));
-    saveNotifications();
-  };
-
-  const toggleDropdown = () => {
-    isDropdownOpen.value = !isDropdownOpen.value;
-  };
-
-  const getUnreadCount = () =>
-    notifications.value.filter((n) => !n.isRead).length;
-
-  // --- FCM設定 ---
-  const requestNotificationPermission = async () => {
-    // まず履歴をロード
-    loadNotifications();
-
-    try {
-      const permission = await Notification.requestPermission();
-      if (permission === "granted") {
-        const messaging = getMessaging();
-
-        // フォアグラウンド受信時
-        onMessage(messaging, (payload) => {
-          console.log("Message received. ", payload);
-          addNotification(
-            "info", // プッシュ通知はinfo扱い
-            payload.notification?.title || "通知",
-            payload.notification?.body || ""
-          );
-        });
-
-        const token = await getToken(messaging, { vapidKey: VAPID_KEY });
-        if (token && auth.currentUser) {
-          await saveTokenToDatabase(token);
-        }
-      }
-    } catch (err) {
-      console.error("Unable to get permission to notify.", err);
-    }
-  };
-
-  const saveTokenToDatabase = async (token: string) => {
-    if (!auth.currentUser) return;
-    const userRef = doc(db, "users", auth.currentUser.uid);
-    await setDoc(
-      userRef,
-      {
-        fcmTokens: arrayUnion(token),
-      },
-      { merge: true }
-    );
-  };
-
-  return {
-    notifications,
-    isDropdownOpen,
-    addNotification,
-    markAsRead,
-    markAllRead,
-    toggleDropdown,
-    getUnreadCount,
-    requestNotificationPermission,
-  };
-}
-</file>
-
 <file path="src/seed/questions.ts">
 import { Question } from "@/types"; // さっき作った型定義
 
@@ -3903,6 +3755,155 @@ export function useMockExam() {
     createMockExam,
     closeAndReleaseExam,
     deleteMockExam, // ★ エクスポート追加
+  };
+}
+</file>
+
+<file path="src/composables/useNotifications.ts">
+import { ref } from "vue";
+import { getMessaging, getToken, onMessage } from "firebase/messaging";
+import { doc, setDoc, arrayUnion } from "firebase/firestore";
+import { db, auth } from "@/firebase";
+
+export interface NotificationItem {
+  id: string;
+  type: "reservation" | "cancel" | "info";
+  title: string;
+  message: string;
+  timestamp: Date;
+  isRead: boolean;
+}
+
+// グローバルステート
+const notifications = ref<NotificationItem[]>([]);
+const isDropdownOpen = ref(false);
+const STORAGE_KEY = "hairlink_notifications";
+
+// ★重要: Firebaseコンソールで取得したVAPIDキーを入れてください
+const VAPID_KEY =
+  "BDc2GU2MYvtgOjzdx5cnFjp9xeAQ2DhkrmtF6w3MVzkKzb0DTJmtJCrSOiKs0J90vXZ6glr-5Wl2jHJGmETBSc8";
+
+export function useNotifications() {
+  // 履歴をローカルストレージから読み込む
+  const loadNotifications = () => {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        notifications.value = parsed.map((n: any) => ({
+          ...n,
+          timestamp: new Date(n.timestamp),
+        }));
+      } catch (e) {
+        console.error("Failed to load notifications", e);
+      }
+    }
+  };
+
+  // 履歴をローカルストレージに保存
+  const saveNotifications = () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(notifications.value));
+  };
+
+  // 通知を追加する
+  const addNotification = (
+    type: "reservation" | "cancel" | "info",
+    title: string,
+    message: string
+  ) => {
+    const newItem: NotificationItem = {
+      id: Date.now().toString(),
+      type,
+      title,
+      message,
+      timestamp: new Date(),
+      isRead: false,
+    };
+    notifications.value.unshift(newItem);
+
+    // 最大50件まで保存
+    if (notifications.value.length > 50) {
+      notifications.value.pop();
+    }
+
+    saveNotifications();
+
+    if (typeof navigator !== "undefined" && navigator.vibrate) {
+      navigator.vibrate(200);
+    }
+  };
+
+  const markAsRead = (id: string) => {
+    const target = notifications.value.find((n) => n.id === id);
+    if (target) {
+      target.isRead = true;
+      saveNotifications();
+    }
+  };
+
+  const markAllRead = () => {
+    notifications.value.forEach((n) => (n.isRead = true));
+    saveNotifications();
+  };
+
+  const toggleDropdown = () => {
+    isDropdownOpen.value = !isDropdownOpen.value;
+  };
+
+  const getUnreadCount = () =>
+    notifications.value.filter((n) => !n.isRead).length;
+
+  // --- FCM設定 ---
+  const requestNotificationPermission = async () => {
+    // まず履歴をロード
+    loadNotifications();
+
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission === "granted") {
+        const messaging = getMessaging();
+
+        // フォアグラウンド受信時
+        onMessage(messaging, (payload) => {
+          console.log("Message received. ", payload);
+          addNotification(
+            "info", // プッシュ通知はinfo扱い
+            payload.notification?.title || "通知",
+            payload.notification?.body || ""
+          );
+        });
+
+        const token = await getToken(messaging, { vapidKey: VAPID_KEY });
+        if (token && auth.currentUser) {
+          await saveTokenToDatabase(token);
+        }
+      }
+    } catch (err) {
+      console.error("Unable to get permission to notify.", err);
+    }
+  };
+
+  const saveTokenToDatabase = async (token: string) => {
+    if (!auth.currentUser) return;
+    const userRef = doc(db, "users", auth.currentUser.uid);
+    await setDoc(
+      userRef,
+      {
+        fcmTokens: arrayUnion(token),
+      },
+      { merge: true }
+    );
+  };
+
+  return {
+    notifications,
+    isDropdownOpen,
+    addNotification,
+    markAsRead,
+    markAllRead,
+    toggleDropdown,
+    getUnreadCount,
+    requestNotificationPermission,
   };
 }
 </file>
@@ -5927,313 +5928,6 @@ onMounted(() => {
 }
 </file>
 
-<file path="functions/lib/index.js">
-"use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.notifyOnMockExamCreated = void 0;
-const firestore_1 = require("firebase-functions/v2/firestore");
-const v2_1 = require("firebase-functions/v2"); // ★追加
-const admin = __importStar(require("firebase-admin"));
-// 旧コードの互換性のために残す（必要なら import * as functions from "firebase-functions"; に書き換えて使用）
-// const functions = require("firebase-functions");
-// ★追加: サーバーの場所を東京に設定
-(0, v2_1.setGlobalOptions)({ region: "asia-northeast1" });
-admin.initializeApp();
-/**
- * ★新機能: 模試が作成されたときに、全ユーザーへプッシュ通知を送信する関数
- */
-exports.notifyOnMockExamCreated = (0, firestore_1.onDocumentCreated)("mock_exams/{examId}", async (event) => {
-    const snapshot = event.data;
-    if (!snapshot)
-        return;
-    const examData = snapshot.data();
-    const title = examData.title || "新しい模試";
-    // 1. 送るメッセージの内容設定
-    const message = {
-        notification: {
-            title: "📢 全国統一模試が公開されました！",
-            body: `「${title}」の受付が開始されました。今すぐ実力をチェックしましょう！`,
-        },
-        webpush: {
-            fcmOptions: {
-                link: "/mock-exam", // 通知をタップしたら模試画面へ遷移
-            },
-        },
-    };
-    // 2. 全ユーザーのFCMトークンを取得
-    const usersSnap = await admin.firestore().collection("users").get();
-    let tokens = [];
-    usersSnap.forEach((doc) => {
-        const userData = doc.data();
-        // fcmTokens配列を持っているユーザーのトークンを収集
-        if (userData.fcmTokens && Array.isArray(userData.fcmTokens)) {
-            tokens.push(...userData.fcmTokens);
-        }
-    });
-    // 重複したトークンを削除
-    tokens = [...new Set(tokens)];
-    if (tokens.length === 0) {
-        console.log("送信先トークンがありません。");
-        return;
-    }
-    // 3. 一括送信 (最大500件ずつ)
-    try {
-        const response = await admin.messaging().sendEachForMulticast({
-            tokens: tokens,
-            notification: message.notification,
-            webpush: message.webpush,
-        });
-        console.log(`通知送信完了: 成功 ${response.successCount} 件 / 失敗 ${response.failureCount} 件`);
-    }
-    catch (error) {
-        console.error("通知送信エラー:", error);
-    }
-});
-// ============================================================
-//  以下、旧コード（Stripe決済機能など） ※念のためコメントアウトで保持
-// ============================================================
-// const stripe = require("stripe")(
-//   "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"
-// );
-// // 1. 決済セッションを作成する関数（フロントから呼ばれる）
-// exports.createCheckoutSession = functions.https.onCall(
-//   async (data, context) => {
-//     // ログインしていないと拒否
-//     if (!context.auth) {
-//       throw new functions.https.HttpsError(
-//         "unauthenticated",
-//         "User must be logged in"
-//       );
-//     }
-//     const uid = context.auth.uid;
-//     const userEmail = context.auth.token.email;
-//     // Stripeで決済セッションを作成
-//     const session = await stripe.checkout.sessions.create({
-//       payment_method_types: ["card"],
-//       mode: "subscription", // サブスクリプションモード
-//       line_items: [
-//         {
-//           price: "price_1SlrgxCRUPdCre1Qlrcvt90g",
-//           quantity: 1,
-//         },
-//       ],
-//       customer_email: userEmail,
-//       metadata: { uid: uid }, // 誰が買ったかわかるようにUIDを埋め込む
-//       success_url: "http://localhost:5173/result?status=success", // 決済成功時の戻り先
-//       cancel_url: "http://localhost:5173/premium", // キャンセル時の戻り先
-//     });
-//     return { url: session.url };
-//   }
-// );
-// // 2. 決済完了を受け取るWebhook（Stripeから自動で呼ばれる）
-// exports.stripeWebhook = functions.https.onRequest(async (req, res) => {
-//   const sig = req.headers["stripe-signature"];
-//   const endpointSecret =
-//     "Stripeダッシュボードで取得するWebhook署名シークレット";
-//   let event;
-//   try {
-//     event = stripe.webhooks.constructEvent(req.rawBody, sig, endpointSecret);
-//   } catch (err) {
-//     return res.status(400).send(`Webhook Error: ${err.message}`);
-//   }
-//   // 決済完了イベントのみ処理
-//   if (event.type === "checkout.session.completed") {
-//     const session = event.data.object;
-//     const uid = session.metadata.uid;
-//     // Firestoreのユーザー情報を更新してプレミアムにする
-//     await admin.firestore().collection("users").doc(uid).update({
-//       isPremium: true,
-//       stripeCustomerId: session.customer,
-//       subscriptionId: session.subscription,
-//       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-//     });
-//   }
-//   res.json({ received: true });
-// });
-</file>
-
-<file path="functions/index.ts">
-import { onDocumentCreated } from "firebase-functions/v2/firestore";
-import { setGlobalOptions } from "firebase-functions/v2"; // ★追加
-import * as admin from "firebase-admin";
-
-// 旧コードの互換性のために残す（必要なら import * as functions from "firebase-functions"; に書き換えて使用）
-// const functions = require("firebase-functions");
-
-// ★追加: サーバーの場所を東京に設定
-setGlobalOptions({ region: "asia-northeast1" });
-
-admin.initializeApp();
-
-/**
- * ★新機能: 模試が作成されたときに、全ユーザーへプッシュ通知を送信する関数
- */
-export const notifyOnMockExamCreated = onDocumentCreated(
-  "mock_exams/{examId}",
-  async (event) => {
-    const snapshot = event.data;
-    if (!snapshot) return;
-
-    const examData = snapshot.data();
-    const title = examData.title || "新しい模試";
-
-    // 1. 送るメッセージの内容設定
-    const message = {
-      notification: {
-        title: "📢 全国統一模試が公開されました！",
-        body: `「${title}」の受付が開始されました。今すぐ実力をチェックしましょう！`,
-      },
-      webpush: {
-        fcmOptions: {
-          link: "/mock-exam", // 通知をタップしたら模試画面へ遷移
-        },
-      },
-    };
-
-    // 2. 全ユーザーのFCMトークンを取得
-    const usersSnap = await admin.firestore().collection("users").get();
-    let tokens: string[] = [];
-
-    usersSnap.forEach((doc) => {
-      const userData = doc.data();
-      // fcmTokens配列を持っているユーザーのトークンを収集
-      if (userData.fcmTokens && Array.isArray(userData.fcmTokens)) {
-        tokens.push(...userData.fcmTokens);
-      }
-    });
-
-    // 重複したトークンを削除
-    tokens = [...new Set(tokens)];
-
-    if (tokens.length === 0) {
-      console.log("送信先トークンがありません。");
-      return;
-    }
-
-    // 3. 一括送信 (最大500件ずつ)
-    try {
-      const response = await admin.messaging().sendEachForMulticast({
-        tokens: tokens,
-        notification: message.notification,
-        webpush: message.webpush,
-      });
-
-      console.log(
-        `通知送信完了: 成功 ${response.successCount} 件 / 失敗 ${response.failureCount} 件`
-      );
-    } catch (error) {
-      console.error("通知送信エラー:", error);
-    }
-  }
-);
-
-// ============================================================
-//  以下、旧コード（Stripe決済機能など） ※念のためコメントアウトで保持
-// ============================================================
-
-// const stripe = require("stripe")(
-//   "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"
-// );
-
-// // 1. 決済セッションを作成する関数（フロントから呼ばれる）
-// exports.createCheckoutSession = functions.https.onCall(
-//   async (data, context) => {
-//     // ログインしていないと拒否
-//     if (!context.auth) {
-//       throw new functions.https.HttpsError(
-//         "unauthenticated",
-//         "User must be logged in"
-//       );
-//     }
-
-//     const uid = context.auth.uid;
-//     const userEmail = context.auth.token.email;
-
-//     // Stripeで決済セッションを作成
-//     const session = await stripe.checkout.sessions.create({
-//       payment_method_types: ["card"],
-//       mode: "subscription", // サブスクリプションモード
-//       line_items: [
-//         {
-//           price: "price_1SlrgxCRUPdCre1Qlrcvt90g",
-//           quantity: 1,
-//         },
-//       ],
-//       customer_email: userEmail,
-//       metadata: { uid: uid }, // 誰が買ったかわかるようにUIDを埋め込む
-//       success_url: "http://localhost:5173/result?status=success", // 決済成功時の戻り先
-//       cancel_url: "http://localhost:5173/premium", // キャンセル時の戻り先
-//     });
-
-//     return { url: session.url };
-//   }
-// );
-
-// // 2. 決済完了を受け取るWebhook（Stripeから自動で呼ばれる）
-// exports.stripeWebhook = functions.https.onRequest(async (req, res) => {
-//   const sig = req.headers["stripe-signature"];
-//   const endpointSecret =
-//     "Stripeダッシュボードで取得するWebhook署名シークレット";
-
-//   let event;
-
-//   try {
-//     event = stripe.webhooks.constructEvent(req.rawBody, sig, endpointSecret);
-//   } catch (err) {
-//     return res.status(400).send(`Webhook Error: ${err.message}`);
-//   }
-
-//   // 決済完了イベントのみ処理
-//   if (event.type === "checkout.session.completed") {
-//     const session = event.data.object;
-//     const uid = session.metadata.uid;
-
-//     // Firestoreのユーザー情報を更新してプレミアムにする
-//     await admin.firestore().collection("users").doc(uid).update({
-//       isPremium: true,
-//       stripeCustomerId: session.customer,
-//       subscriptionId: session.subscription,
-//       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-//     });
-//   }
-
-//   res.json({ received: true });
-// });
-</file>
-
 <file path="src/components/MyPage/MyPage.vue">
 <script setup lang="ts">
 import { onMounted, computed } from "vue";
@@ -6954,6 +6648,313 @@ export default defineConfig({
     },
   },
 });
+</file>
+
+<file path="functions/lib/index.js">
+"use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.notifyOnMockExamCreated = void 0;
+const firestore_1 = require("firebase-functions/v2/firestore");
+const v2_1 = require("firebase-functions/v2"); // ★追加
+const admin = __importStar(require("firebase-admin"));
+// 旧コードの互換性のために残す（必要なら import * as functions from "firebase-functions"; に書き換えて使用）
+// const functions = require("firebase-functions");
+// ★追加: サーバーの場所を東京に設定
+(0, v2_1.setGlobalOptions)({ region: "asia-northeast1" });
+admin.initializeApp();
+/**
+ * ★新機能: 模試が作成されたときに、全ユーザーへプッシュ通知を送信する関数
+ */
+exports.notifyOnMockExamCreated = (0, firestore_1.onDocumentCreated)("mock_exams/{examId}", async (event) => {
+    const snapshot = event.data;
+    if (!snapshot)
+        return;
+    const examData = snapshot.data();
+    const title = examData.title || "新しい模試";
+    // 1. 送るメッセージの内容設定
+    const message = {
+        notification: {
+            title: "📢 全国統一模試が公開されました！",
+            body: `「${title}」の受付が開始されました。今すぐ実力をチェックしましょう！`,
+        },
+        webpush: {
+            fcmOptions: {
+                link: "/mock-exam", // 通知をタップしたら模試画面へ遷移
+            },
+        },
+    };
+    // 2. 全ユーザーのFCMトークンを取得
+    const usersSnap = await admin.firestore().collection("users").get();
+    let tokens = [];
+    usersSnap.forEach((doc) => {
+        const userData = doc.data();
+        // fcmTokens配列を持っているユーザーのトークンを収集
+        if (userData.fcmTokens && Array.isArray(userData.fcmTokens)) {
+            tokens.push(...userData.fcmTokens);
+        }
+    });
+    // 重複したトークンを削除
+    tokens = [...new Set(tokens)];
+    if (tokens.length === 0) {
+        console.log("送信先トークンがありません。");
+        return;
+    }
+    // 3. 一括送信 (最大500件ずつ)
+    try {
+        const response = await admin.messaging().sendEachForMulticast({
+            tokens: tokens,
+            notification: message.notification,
+            webpush: message.webpush,
+        });
+        console.log(`通知送信完了: 成功 ${response.successCount} 件 / 失敗 ${response.failureCount} 件`);
+    }
+    catch (error) {
+        console.error("通知送信エラー:", error);
+    }
+});
+// ============================================================
+//  以下、旧コード（Stripe決済機能など） ※念のためコメントアウトで保持
+// ============================================================
+// const stripe = require("stripe")(
+//   "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"
+// );
+// // 1. 決済セッションを作成する関数（フロントから呼ばれる）
+// exports.createCheckoutSession = functions.https.onCall(
+//   async (data, context) => {
+//     // ログインしていないと拒否
+//     if (!context.auth) {
+//       throw new functions.https.HttpsError(
+//         "unauthenticated",
+//         "User must be logged in"
+//       );
+//     }
+//     const uid = context.auth.uid;
+//     const userEmail = context.auth.token.email;
+//     // Stripeで決済セッションを作成
+//     const session = await stripe.checkout.sessions.create({
+//       payment_method_types: ["card"],
+//       mode: "subscription", // サブスクリプションモード
+//       line_items: [
+//         {
+//           price: "price_1SlrgxCRUPdCre1Qlrcvt90g",
+//           quantity: 1,
+//         },
+//       ],
+//       customer_email: userEmail,
+//       metadata: { uid: uid }, // 誰が買ったかわかるようにUIDを埋め込む
+//       success_url: "http://localhost:5173/result?status=success", // 決済成功時の戻り先
+//       cancel_url: "http://localhost:5173/premium", // キャンセル時の戻り先
+//     });
+//     return { url: session.url };
+//   }
+// );
+// // 2. 決済完了を受け取るWebhook（Stripeから自動で呼ばれる）
+// exports.stripeWebhook = functions.https.onRequest(async (req, res) => {
+//   const sig = req.headers["stripe-signature"];
+//   const endpointSecret =
+//     "Stripeダッシュボードで取得するWebhook署名シークレット";
+//   let event;
+//   try {
+//     event = stripe.webhooks.constructEvent(req.rawBody, sig, endpointSecret);
+//   } catch (err) {
+//     return res.status(400).send(`Webhook Error: ${err.message}`);
+//   }
+//   // 決済完了イベントのみ処理
+//   if (event.type === "checkout.session.completed") {
+//     const session = event.data.object;
+//     const uid = session.metadata.uid;
+//     // Firestoreのユーザー情報を更新してプレミアムにする
+//     await admin.firestore().collection("users").doc(uid).update({
+//       isPremium: true,
+//       stripeCustomerId: session.customer,
+//       subscriptionId: session.subscription,
+//       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+//     });
+//   }
+//   res.json({ received: true });
+// });
+</file>
+
+<file path="functions/index.ts">
+import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import { setGlobalOptions } from "firebase-functions/v2"; // ★追加
+import * as admin from "firebase-admin";
+
+// 旧コードの互換性のために残す（必要なら import * as functions from "firebase-functions"; に書き換えて使用）
+// const functions = require("firebase-functions");
+
+// ★追加: サーバーの場所を東京に設定
+setGlobalOptions({ region: "asia-northeast1" });
+
+admin.initializeApp();
+
+/**
+ * ★新機能: 模試が作成されたときに、全ユーザーへプッシュ通知を送信する関数
+ */
+export const notifyOnMockExamCreated = onDocumentCreated(
+  "mock_exams/{examId}",
+  async (event) => {
+    const snapshot = event.data;
+    if (!snapshot) return;
+
+    const examData = snapshot.data();
+    const title = examData.title || "新しい模試";
+
+    // 1. 送るメッセージの内容設定
+    const message = {
+      notification: {
+        title: "📢 全国統一模試が公開されました！",
+        body: `「${title}」の受付が開始されました。今すぐ実力をチェックしましょう！`,
+      },
+      webpush: {
+        fcmOptions: {
+          link: "/mock-exam", // 通知をタップしたら模試画面へ遷移
+        },
+      },
+    };
+
+    // 2. 全ユーザーのFCMトークンを取得
+    const usersSnap = await admin.firestore().collection("users").get();
+    let tokens: string[] = [];
+
+    usersSnap.forEach((doc) => {
+      const userData = doc.data();
+      // fcmTokens配列を持っているユーザーのトークンを収集
+      if (userData.fcmTokens && Array.isArray(userData.fcmTokens)) {
+        tokens.push(...userData.fcmTokens);
+      }
+    });
+
+    // 重複したトークンを削除
+    tokens = [...new Set(tokens)];
+
+    if (tokens.length === 0) {
+      console.log("送信先トークンがありません。");
+      return;
+    }
+
+    // 3. 一括送信 (最大500件ずつ)
+    try {
+      const response = await admin.messaging().sendEachForMulticast({
+        tokens: tokens,
+        notification: message.notification,
+        webpush: message.webpush,
+      });
+
+      console.log(
+        `通知送信完了: 成功 ${response.successCount} 件 / 失敗 ${response.failureCount} 件`
+      );
+    } catch (error) {
+      console.error("通知送信エラー:", error);
+    }
+  }
+);
+
+// ============================================================
+//  以下、旧コード（Stripe決済機能など） ※念のためコメントアウトで保持
+// ============================================================
+
+// const stripe = require("stripe")(
+//   "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"
+// );
+
+// // 1. 決済セッションを作成する関数（フロントから呼ばれる）
+// exports.createCheckoutSession = functions.https.onCall(
+//   async (data, context) => {
+//     // ログインしていないと拒否
+//     if (!context.auth) {
+//       throw new functions.https.HttpsError(
+//         "unauthenticated",
+//         "User must be logged in"
+//       );
+//     }
+
+//     const uid = context.auth.uid;
+//     const userEmail = context.auth.token.email;
+
+//     // Stripeで決済セッションを作成
+//     const session = await stripe.checkout.sessions.create({
+//       payment_method_types: ["card"],
+//       mode: "subscription", // サブスクリプションモード
+//       line_items: [
+//         {
+//           price: "price_1SlrgxCRUPdCre1Qlrcvt90g",
+//           quantity: 1,
+//         },
+//       ],
+//       customer_email: userEmail,
+//       metadata: { uid: uid }, // 誰が買ったかわかるようにUIDを埋め込む
+//       success_url: "http://localhost:5173/result?status=success", // 決済成功時の戻り先
+//       cancel_url: "http://localhost:5173/premium", // キャンセル時の戻り先
+//     });
+
+//     return { url: session.url };
+//   }
+// );
+
+// // 2. 決済完了を受け取るWebhook（Stripeから自動で呼ばれる）
+// exports.stripeWebhook = functions.https.onRequest(async (req, res) => {
+//   const sig = req.headers["stripe-signature"];
+//   const endpointSecret =
+//     "Stripeダッシュボードで取得するWebhook署名シークレット";
+
+//   let event;
+
+//   try {
+//     event = stripe.webhooks.constructEvent(req.rawBody, sig, endpointSecret);
+//   } catch (err) {
+//     return res.status(400).send(`Webhook Error: ${err.message}`);
+//   }
+
+//   // 決済完了イベントのみ処理
+//   if (event.type === "checkout.session.completed") {
+//     const session = event.data.object;
+//     const uid = session.metadata.uid;
+
+//     // Firestoreのユーザー情報を更新してプレミアムにする
+//     await admin.firestore().collection("users").doc(uid).update({
+//       isPremium: true,
+//       stripeCustomerId: session.customer,
+//       subscriptionId: session.subscription,
+//       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+//     });
+//   }
+
+//   res.json({ received: true });
+// });
 </file>
 
 <file path="src/composables/useNextNs.ts">
@@ -8356,7 +8357,8 @@ export default router;
 import { ref, onMounted, computed } from "vue";
 import { useRouter } from "vue-router";
 import { useNextNs } from "@/composables/useNextNs";
-import { useNotifications } from "@/composables/useNotifications"; // ★ 追加
+import { useNotifications } from "@/composables/useNotifications";
+// JsonUploader の import は削除しました
 import TheBottomNav from "@/components/TheBottomNav/TheBottomNav.vue";
 import MyPage from "@/components/MyPage/MyPage.vue";
 import SettingsTab from "@/components/SettingsTab/SettingsTab.vue";
@@ -8381,7 +8383,7 @@ const {
   cleanupDuplicates,
 } = useNextNs();
 
-const { requestNotificationPermission } = useNotifications(); // ★ 通知機能
+const { requestNotificationPermission } = useNotifications();
 
 const currentTab = ref("home");
 
@@ -8454,19 +8456,19 @@ const startStudy = async (options: {
 </file>
 
 <file path=".firebase/hosting.ZGlzdA.cache">
-registerSW.js,1767795128901,5b6445b5215737c53ef0d379c151d57de165a056de2d1c5812ed614f158ebcbd
-sw.js,1767795129530,62e9f91b488ca1280f1c00d93ae85ba8e2ce4769cd1b059f8200e11320a216e4
-manifest.webmanifest,1767795128901,e23c66a17eae9a20ef9043e61f89a8261cc0022c603416c0dee217ad5189f7e6
-workbox-8c29f6e4.js,1767795129531,c1360d97831a7585ba8f5c2631c0b3b78258637b50e1329c8f7fc0837604e59a
-index.html,1767795128901,00a6bedd5422c3ddabc2bc51a79cab07bb86fd8cb272826602b243d2db95e2a0
-firebase-messaging-sw.js,1767795128759,8d8cf84c873b19b20b1328e697daeb3ef8d264cfe3e53683cd4da02a30ee90b1
-pwa-192x192.png,1767795128760,121b31ad4cdaa0c40de36dfa9392079ab01285a12f2c6db18bfc5b935cefa843
-assets/index-CKqOqDNh.css,1767795128901,48b122a41491829da3f72f5b081a305abf890a82a93f585b369ae46bb178d42c
-logo.png,1767795128759,121b31ad4cdaa0c40de36dfa9392079ab01285a12f2c6db18bfc5b935cefa843
-presentation.html,1767795128759,ae3b4772b21fdc1fc26348c7df9444275707a36e81107e5ccf9737ca72ec523d
-pwa-512x512.png,1767795128760,121b31ad4cdaa0c40de36dfa9392079ab01285a12f2c6db18bfc5b935cefa843
-apple-touch-icon.png,1767795128759,121b31ad4cdaa0c40de36dfa9392079ab01285a12f2c6db18bfc5b935cefa843
-assets/index-BRzf2GEr.js,1767795128901,87f1f5fb7cf3d074666c0a961e0bb3cbf28911bc757d4426110389d4275c8ca3
+sw.js,1767795931721,57f674dcde7a87eafc3eac91ec3fb2749940aef3885d4a8e244f77dd37a04d3e
+registerSW.js,1767795931033,5b6445b5215737c53ef0d379c151d57de165a056de2d1c5812ed614f158ebcbd
+workbox-8c29f6e4.js,1767795931722,c1360d97831a7585ba8f5c2631c0b3b78258637b50e1329c8f7fc0837604e59a
+index.html,1767795931033,37c9b4f9052bd6a6ecbf9f5ae7f4a39b24722580fff7493a26262d4ba6cf3e5c
+manifest.webmanifest,1767795931033,e23c66a17eae9a20ef9043e61f89a8261cc0022c603416c0dee217ad5189f7e6
+firebase-messaging-sw.js,1767795930864,8d8cf84c873b19b20b1328e697daeb3ef8d264cfe3e53683cd4da02a30ee90b1
+assets/index-BLuf8SyF.css,1767795931033,68ab55f746cc7401d59ac533353dac2adf5adb6a1ff300820e02e53a5fa567ec
+presentation.html,1767795930865,ae3b4772b21fdc1fc26348c7df9444275707a36e81107e5ccf9737ca72ec523d
+pwa-192x192.png,1767795930865,121b31ad4cdaa0c40de36dfa9392079ab01285a12f2c6db18bfc5b935cefa843
+pwa-512x512.png,1767795930866,121b31ad4cdaa0c40de36dfa9392079ab01285a12f2c6db18bfc5b935cefa843
+logo.png,1767795930865,121b31ad4cdaa0c40de36dfa9392079ab01285a12f2c6db18bfc5b935cefa843
+apple-touch-icon.png,1767795930864,121b31ad4cdaa0c40de36dfa9392079ab01285a12f2c6db18bfc5b935cefa843
+assets/index-DzO4gLiL.js,1767795931033,702b927131296f523e2621c994b0c90654d305b13a7f7c7ce5e210d63cb6b6f0
 </file>
 
 </files>

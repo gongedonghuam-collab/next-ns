@@ -122,6 +122,61 @@
             </div>
           </div>
 
+          <div
+            class="bg-white rounded-3xl p-5 border border-slate-100 shadow-sm"
+          >
+            <div class="flex items-center gap-2 mb-4">
+              <span class="text-xl">📚</span>
+              <h2 class="font-black text-slate-800 text-sm">
+                過去問演習 (年度別)
+              </h2>
+            </div>
+
+            <div class="space-y-4">
+              <div
+                v-for="stat in questionStats"
+                :key="stat.year"
+                class="p-4 bg-slate-50 rounded-2xl border border-slate-100"
+              >
+                <div class="flex justify-between items-center mb-3">
+                  <span class="font-black text-slate-700 text-sm">{{
+                    stat.year
+                  }}</span>
+                  <span class="text-[10px] font-bold text-slate-400">
+                    収録: {{ stat.total }}問
+                  </span>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                  <button
+                    @click="
+                      startStudy({
+                        mode: 'examYear',
+                        year: stat.year,
+                        period: 'am',
+                      })
+                    "
+                    class="py-3 bg-white border-2 border-blue-100 rounded-xl text-[11px] font-bold text-blue-600 hover:bg-blue-600 hover:text-white hover:border-blue-600 transition active:scale-95 shadow-sm"
+                  >
+                    ☀️ 午前問題 ({{ stat.am }})
+                  </button>
+                  <button
+                    @click="
+                      startStudy({
+                        mode: 'examYear',
+                        year: stat.year,
+                        period: 'pm',
+                      })
+                    "
+                    class="py-3 bg-white border-2 border-orange-100 rounded-xl text-[11px] font-bold text-orange-600 hover:bg-orange-500 hover:text-white hover:border-orange-500 transition active:scale-95 shadow-sm"
+                  >
+                    🌙 午後問題 ({{ stat.pm }})
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <template v-if="isAdmin">
             <div class="py-4 border-t border-slate-200 my-4">
               <p class="text-center text-xs font-bold text-red-500 mb-2">
@@ -152,84 +207,44 @@
                   </button>
                 </div>
 
-                <div class="space-y-6">
+                <div class="space-y-2">
                   <div
                     v-for="stat in questionStats"
-                    :key="stat.year"
-                    class="p-4 bg-slate-50 rounded-2xl border border-slate-100"
+                    :key="'admin-' + stat.year"
+                    class="text-[10px] border-b border-slate-50 last:border-0 pb-2"
                   >
-                    <div class="flex justify-between items-center mb-2">
-                      <span class="font-black text-slate-800">{{
-                        stat.year
-                      }}</span>
+                    <div class="flex justify-between font-bold mb-1">
+                      <span>{{ stat.year }}</span>
                       <span
-                        class="text-[10px] font-bold"
                         :class="
                           stat.total === 240 ? 'text-green-500' : 'text-red-500'
                         "
                       >
-                        {{ stat.total }} / 240問
+                        {{ stat.total }}/240
                       </span>
                     </div>
-
-                    <div
-                      v-if="dbHealthReport[stat.year]"
-                      class="space-y-2 mt-3 pt-3 border-t border-slate-200"
-                    >
+                    <div v-if="dbHealthReport[stat.year]">
                       <div
                         v-if="dbHealthReport[stat.year].missingAm.length > 0"
-                        class="text-[9px] text-red-500 leading-tight"
+                        class="text-red-500"
                       >
-                        <span class="font-bold underline">午前不足:</span>
+                        欠番(AM):
                         {{ dbHealthReport[stat.year].missingAm.join(", ") }}
                       </div>
                       <div
                         v-if="dbHealthReport[stat.year].missingPm.length > 0"
-                        class="text-[9px] text-red-500 leading-tight"
+                        class="text-red-500"
                       >
-                        <span class="font-bold underline">午後不足:</span>
+                        欠番(PM):
                         {{ dbHealthReport[stat.year].missingPm.join(", ") }}
                       </div>
                       <div
                         v-if="dbHealthReport[stat.year].duplicates.length > 0"
-                        class="text-[9px] text-orange-600 font-bold"
+                        class="text-orange-500"
                       >
-                        ⚠️ 重複あり:
+                        重複:
                         {{ dbHealthReport[stat.year].duplicates.join(", ") }}
                       </div>
-                      <div
-                        v-if="stat.total === 240"
-                        class="text-[9px] text-green-600 font-bold italic"
-                      >
-                        ✨ 整合性チェック完了
-                      </div>
-                    </div>
-
-                    <div class="grid grid-cols-2 gap-2 mt-4">
-                      <button
-                        @click="
-                          startStudy({
-                            mode: 'examYear',
-                            year: stat.year,
-                            period: 'am',
-                          })
-                        "
-                        class="py-2 bg-white border border-blue-100 rounded-xl text-[10px] font-black text-blue-600 hover:bg-blue-600 hover:text-white transition active:scale-95"
-                      >
-                        午前開始 ({{ stat.am }})
-                      </button>
-                      <button
-                        @click="
-                          startStudy({
-                            mode: 'examYear',
-                            year: stat.year,
-                            period: 'pm',
-                          })
-                        "
-                        class="py-2 bg-white border border-blue-100 rounded-xl text-[10px] font-black text-blue-600 hover:bg-blue-600 hover:text-white transition active:scale-95"
-                      >
-                        午後開始 ({{ stat.pm }})
-                      </button>
                     </div>
                   </div>
                 </div>
@@ -328,7 +343,6 @@ import { ref, onMounted, computed } from "vue";
 import { useRouter } from "vue-router";
 import { useNextNs } from "@/composables/useNextNs";
 import { useNotifications } from "@/composables/useNotifications";
-// JsonUploader の import は削除しました
 import TheBottomNav from "@/components/TheBottomNav/TheBottomNav.vue";
 import MyPage from "@/components/MyPage/MyPage.vue";
 import SettingsTab from "@/components/SettingsTab/SettingsTab.vue";
