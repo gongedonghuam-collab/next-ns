@@ -2157,314 +2157,6 @@ export function useAdmin() {
 }
 </file>
 
-<file path="src/composables/useMockExam.ts">
-import { ref } from "vue";
-import { db } from "@/firebase";
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  setDoc,
-  updateDoc,
-  query,
-  orderBy,
-  serverTimestamp,
-  limit,
-} from "firebase/firestore";
-import type { Question } from "@/types";
-
-// 模試データの型定義
-export interface MockExam {
-  id: string;
-  title: string;
-  status: "active" | "closed" | "released";
-  questionIds: string[];
-  deadline: any;
-  createdAt: any;
-  // ★ 統計データを国試用に詳細化
-  stats?: {
-    totalParticipants: number;
-    // 必修問題
-    mandatoryMax: number; // 満点
-    mandatoryBorder: number; // 合格ライン(80%)
-    // 一般+状況設定問題
-    generalMax: number; // 満点
-    generalBorder: number; // 合格ライン(相対評価)
-    generalAverage: number; // 平均点
-  };
-}
-
-// ユーザーの回答データの型定義
-export interface MockSubmission {
-  userId: string;
-  userAnswers: number[];
-  score: number; // 総合点
-  mandatoryScore: number; // ★追加: 必修の得点
-  generalScore: number; // ★追加: 一般+状況の得点
-  submittedAt: any;
-}
-
-export function useMockExam() {
-  const loading = ref(false);
-  const activeExam = ref<MockExam | null>(null);
-  const userSubmission = ref<MockSubmission | null>(null);
-  const examQuestions = ref<Question[]>([]);
-
-  // 1. 最新の模試情報を取得
-  const fetchLatestExam = async (userId?: string) => {
-    loading.value = true;
-    try {
-      const q = query(
-        collection(db, "mock_exams"),
-        orderBy("createdAt", "desc"),
-        limit(1)
-      );
-      const snap = await getDocs(q);
-
-      if (!snap.empty) {
-        const docData = snap.docs[0].data();
-        activeExam.value = {
-          id: snap.docs[0].id,
-          ...docData,
-          deadline: docData.deadline?.toDate
-            ? docData.deadline.toDate()
-            : new Date(docData.deadline),
-        } as MockExam;
-
-        if (userId) {
-          const subRef = doc(
-            db,
-            "mock_exams",
-            activeExam.value.id,
-            "submissions",
-            userId
-          );
-          const subSnap = await getDoc(subRef);
-          if (subSnap.exists()) {
-            userSubmission.value = subSnap.data() as MockSubmission;
-          } else {
-            userSubmission.value = null;
-          }
-        }
-      } else {
-        activeExam.value = null;
-      }
-    } catch (e) {
-      console.error("模試取得エラー", e);
-    } finally {
-      loading.value = false;
-    }
-  };
-
-  // 2. 問題ロード
-  const loadExamQuestions = async () => {
-    if (!activeExam.value) return;
-    loading.value = true;
-    const list: Question[] = [];
-    for (const qId of activeExam.value.questionIds) {
-      const snap = await getDoc(doc(db, "questions", qId));
-      if (snap.exists()) {
-        list.push({ id: snap.id, ...snap.data() } as Question);
-      }
-    }
-    examQuestions.value = list;
-    loading.value = false;
-  };
-
-  // 3. 提出 (点数を種別ごとに集計して保存)
-  const submitExam = async (
-    userId: string,
-    answers: number[],
-    questions: Question[]
-  ) => {
-    if (!activeExam.value) return;
-    loading.value = true;
-
-    try {
-      let totalScore = 0;
-      let mandatoryScore = 0;
-      let generalScore = 0;
-
-      questions.forEach((q, index) => {
-        // 正解しているか
-        const isCorrect = q.correctIndices.includes(answers[index]);
-        if (isCorrect) {
-          totalScore++;
-          // 問題タイプで振り分け
-          if (q.type === "mandatory") {
-            mandatoryScore++;
-          } else {
-            generalScore++; // 一般 or 状況設定
-          }
-        }
-      });
-
-      const submissionData = {
-        userId,
-        userAnswers: answers,
-        score: totalScore,
-        mandatoryScore,
-        generalScore,
-        submittedAt: serverTimestamp(),
-      };
-
-      // Firestore保存
-      await setDoc(
-        doc(db, "mock_exams", activeExam.value.id, "submissions", userId),
-        submissionData
-      );
-
-      // ローカル更新
-      userSubmission.value = {
-        ...submissionData,
-        submittedAt: new Date(),
-      };
-
-      alert("提出が完了しました！\nお疲れ様でした。");
-    } catch (e: any) {
-      alert("提出に失敗しました: " + e.message);
-    } finally {
-      loading.value = false;
-    }
-  };
-
-  // 4. 新規模試作成
-  const createMockExam = async (
-    title: string,
-    daysLater: number,
-    allQuestions: Question[]
-  ) => {
-    if (allQuestions.length < 30) {
-      alert("問題数が足りません");
-      return;
-    }
-    loading.value = true;
-    try {
-      const shuffled = [...allQuestions].sort(() => 0.5 - Math.random());
-      const selected = shuffled.slice(0, 30);
-      const qIds = selected.map((q) => q.id);
-
-      const deadline = new Date();
-      deadline.setDate(deadline.getDate() + daysLater);
-
-      await setDoc(doc(collection(db, "mock_exams")), {
-        title,
-        status: "active",
-        questionIds: qIds,
-        deadline: deadline,
-        createdAt: serverTimestamp(),
-      });
-
-      alert(`「${title}」を作成しました！`);
-      await fetchLatestExam();
-    } catch (e: any) {
-      alert("作成失敗: " + e.message);
-    } finally {
-      loading.value = false;
-    }
-  };
-
-  // 5. ★★★ 集計ロジック（国試仕様） ★★★
-  const closeAndReleaseExam = async (examId: string) => {
-    if (
-      !confirm(
-        "回答を締め切って集計しますか？\n実際の国試基準（必修8割・一般相対評価）で判定します。"
-      )
-    )
-      return;
-
-    loading.value = true;
-    try {
-      // 1. 全回答を取得
-      const subCol = collection(db, "mock_exams", examId, "submissions");
-      const snap = await getDocs(subCol);
-      const submissions = snap.docs.map((d) => d.data() as MockSubmission);
-
-      const totalParticipants = submissions.length;
-      if (totalParticipants === 0) throw new Error("回答者が0人です");
-
-      // 2. 問題情報を再取得して配点を計算（満点を出すため）
-      const examDoc = await getDoc(doc(db, "mock_exams", examId));
-      const qIds = examDoc.data()?.questionIds || [];
-
-      let mandatoryMax = 0;
-      let generalMax = 0;
-
-      // 30問分のデータを取得して満点を計算
-      for (const qId of qIds) {
-        const qSnap = await getDoc(doc(db, "questions", qId));
-        if (qSnap.exists()) {
-          const qData = qSnap.data();
-          if (qData.type === "mandatory") mandatoryMax++;
-          else generalMax++;
-        }
-      }
-
-      // 3. 【必修】ボーダー計算（絶対評価 80%）
-      const mandatoryBorder = Math.ceil(mandatoryMax * 0.8);
-
-      // 4. 【一般】ボーダー計算（相対評価 合格率約90%ライン）
-      // 一般スコアだけで降順ソート
-      const sortedGeneralScores = submissions
-        .map((s) => s.generalScore)
-        .sort((a, b) => b - a);
-
-      // 上位90%のラインを計算
-      // 例: 100人いたら90番目の人の点数がボーダー
-      // もし人数が少なすぎる場合は、平均点などを代用する安全策も考慮できますが、
-      // 今回は厳密に「下位10%切り捨て」ロジックで実装します。
-      const borderIndex = Math.floor(totalParticipants * 0.9) - 1;
-      const safeBorderIndex = Math.max(0, borderIndex); // インデックスが負にならないよう調整
-
-      const generalBorder = sortedGeneralScores[safeBorderIndex];
-
-      // 一般の平均点（参考用）
-      const totalGeneral = submissions.reduce(
-        (sum, s) => sum + s.generalScore,
-        0
-      );
-      const generalAverage =
-        Math.round((totalGeneral / totalParticipants) * 10) / 10;
-
-      // 5. 保存
-      await updateDoc(doc(db, "mock_exams", examId), {
-        status: "released",
-        stats: {
-          totalParticipants,
-          mandatoryMax,
-          mandatoryBorder,
-          generalMax,
-          generalBorder,
-          generalAverage,
-        },
-      });
-
-      alert(
-        `集計完了！\n参加者: ${totalParticipants}人\n必修ボーダー: ${mandatoryBorder}点\n一般ボーダー: ${generalBorder}点`
-      );
-      await fetchLatestExam();
-    } catch (e: any) {
-      alert("集計エラー: " + e.message);
-    } finally {
-      loading.value = false;
-    }
-  };
-
-  return {
-    loading,
-    activeExam,
-    userSubmission,
-    examQuestions,
-    fetchLatestExam,
-    loadExamQuestions,
-    submitExam,
-    createMockExam,
-    closeAndReleaseExam,
-  };
-}
-</file>
-
 <file path="src/composables/useNotifications.ts">
 import { ref } from "vue";
 import { getMessaging, getToken, onMessage } from "firebase/messaging";
@@ -2804,437 +2496,6 @@ defineExpose({
 </template>
 </file>
 
-<file path="src/views/AdminView/AdminView.vue">
-<template>
-  <div class="min-h-screen bg-slate-100 font-sans pb-20">
-    <header
-      class="bg-slate-800 text-white px-6 py-4 shadow-md sticky top-0 z-50"
-    >
-      <div class="max-w-4xl mx-auto flex justify-between items-center">
-        <h1 class="font-bold text-lg flex items-center gap-2">
-          🛠️ 管理者ダッシュボード
-        </h1>
-        <button
-          @click="router.push('/')"
-          class="text-xs bg-slate-700 px-3 py-2 rounded hover:bg-slate-600 transition"
-        >
-          アプリに戻る
-        </button>
-      </div>
-    </header>
-
-    <main class="max-w-4xl mx-auto px-4 mt-8 space-y-8">
-      <section
-        class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 relative overflow-hidden"
-      >
-        <div class="absolute top-0 right-0 p-4 opacity-10 text-6xl">📊</div>
-        <h2
-          class="font-bold text-slate-700 mb-6 flex items-center gap-2 relative z-10"
-        >
-          <span class="bg-indigo-100 text-indigo-600 p-1 rounded">👑</span>
-          一斉模試センター
-        </h2>
-
-        <div
-          v-if="activeExam"
-          class="bg-indigo-50 p-5 rounded-xl border border-indigo-100 mb-6"
-        >
-          <div class="flex justify-between items-start mb-2">
-            <h3 class="font-black text-indigo-800 text-lg">
-              {{ activeExam.title }}
-            </h3>
-            <span
-              class="text-xs font-bold px-2 py-1 rounded bg-white text-indigo-600 border border-indigo-100"
-            >
-              {{ activeExam.status === "active" ? "開催中" : "公開済み" }}
-            </span>
-          </div>
-          <p class="text-xs text-indigo-500 mb-4">
-            締切: {{ new Date(activeExam.deadline).toLocaleDateString() }}
-          </p>
-
-          <div v-if="activeExam.status === 'active'">
-            <button
-              @click="closeAndReleaseExam(activeExam.id)"
-              :disabled="loading"
-              class="w-full py-3 bg-red-500 text-white font-bold rounded-lg shadow hover:bg-red-600 transition active:scale-95"
-            >
-              🚨 締め切って集計・結果公開する
-            </button>
-            <p class="text-[10px] text-center text-slate-400 mt-2">
-              ※ これを押すとユーザーに合否が表示されます
-            </p>
-          </div>
-          <div v-else>
-            <div
-              class="grid grid-cols-3 gap-2 text-center bg-white p-3 rounded-lg"
-            >
-              <div>
-                <p class="text-[9px] text-slate-400">受験者</p>
-                <p class="font-bold">
-                  {{ activeExam.stats?.totalParticipants }}人
-                </p>
-              </div>
-              <div>
-                <p class="text-[9px] text-slate-400">平均(一般)</p>
-                <p class="font-bold">
-                  {{ activeExam.stats?.generalAverage }}点
-                </p>
-              </div>
-              <div>
-                <p class="text-[9px] text-slate-400">合格点(一般)</p>
-                <p class="font-bold text-red-500">
-                  {{ activeExam.stats?.generalBorder }}点
-                </p>
-              </div>
-            </div>
-            <div class="mt-2 text-center text-[10px] text-slate-400">
-              必修合格点: {{ activeExam.stats?.mandatoryBorder }}点 /
-              {{ activeExam.stats?.mandatoryMax }}点
-            </div>
-          </div>
-        </div>
-
-        <div class="border-t border-slate-100 pt-6">
-          <h3 class="text-sm font-bold text-slate-600 mb-3">新規模試の作成</h3>
-          <div class="flex gap-2">
-            <input
-              v-model="newMockTitle"
-              placeholder="タイトル (例: 第3回 全国模試)"
-              class="flex-1 p-2 border rounded-lg text-sm outline-none focus:border-indigo-500"
-            />
-            <button
-              @click="handleCreateMock"
-              class="bg-indigo-600 text-white font-bold px-4 rounded-lg text-sm hover:bg-indigo-700 transition"
-            >
-              作成
-            </button>
-          </div>
-          <p class="text-[10px] text-slate-400 mt-2">
-            ※
-            データベース内の全問題からランダムに30問選出され、3日後が締切になります。
-          </p>
-        </div>
-      </section>
-
-      <section
-        class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200"
-      >
-        <h2 class="font-bold text-slate-700 mb-4 flex items-center gap-2">
-          <span class="bg-green-100 text-green-600 p-1 rounded">＋</span>
-          新規問題追加
-        </h2>
-
-        <form @submit.prevent="handleSubmitNew" class="space-y-4">
-          <div class="grid grid-cols-2 gap-4">
-            <div>
-              <label class="block text-xs font-bold text-slate-500 mb-1"
-                >年度 (例: 第106回)</label
-              >
-              <input
-                v-model="newQ.examYear"
-                required
-                class="w-full p-2 border rounded-lg text-sm bg-slate-50 focus:bg-white focus:ring-2 ring-blue-200 outline-none"
-                placeholder="第〇〇回"
-              />
-            </div>
-            <div>
-              <label class="block text-xs font-bold text-slate-500 mb-1"
-                >番号 (例: 午前1)</label
-              >
-              <input
-                v-model="newQ.questionNumber"
-                required
-                class="w-full p-2 border rounded-lg text-sm bg-slate-50 focus:bg-white focus:ring-2 ring-blue-200 outline-none"
-                placeholder="午前〇〇"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label class="block text-xs font-bold text-slate-500 mb-1"
-              >問題文</label
-            >
-            <textarea
-              v-model="newQ.text"
-              required
-              rows="3"
-              class="w-full p-2 border rounded-lg text-sm bg-slate-50 focus:bg-white focus:ring-2 ring-blue-200 outline-none"
-              placeholder="問題文を入力..."
-            ></textarea>
-          </div>
-
-          <div class="space-y-2">
-            <label class="block text-xs font-bold text-slate-500"
-              >選択肢 (正解にチェックを入れる)</label
-            >
-            <div
-              v-for="(choice, i) in newQ.choices"
-              :key="i"
-              class="flex items-center gap-2"
-            >
-              <input
-                type="checkbox"
-                :value="i"
-                v-model="newQ.correctIndices"
-                class="w-5 h-5 text-blue-600 rounded focus:ring-blue-500"
-              />
-              <input
-                v-model="newQ.choices[i]"
-                class="flex-1 p-2 border rounded-lg text-sm bg-slate-50 focus:bg-white"
-                :placeholder="`選択肢 ${i + 1}`"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label class="block text-xs font-bold text-slate-500 mb-1"
-              >解説</label
-            >
-            <textarea
-              v-model="newQ.explanation"
-              rows="2"
-              class="w-full p-2 border rounded-lg text-sm bg-slate-50 focus:bg-white focus:ring-2 ring-blue-200 outline-none"
-              placeholder="解説を入力..."
-            ></textarea>
-          </div>
-
-          <button
-            type="submit"
-            :disabled="loading"
-            class="w-full py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition active:scale-95 disabled:opacity-50"
-          >
-            {{ loading ? "処理中..." : "データベースに追加する" }}
-          </button>
-        </form>
-      </section>
-
-      <JsonUploader />
-
-      <section class="space-y-4">
-        <div class="flex justify-between items-center">
-          <h2 class="font-bold text-slate-700">
-            登録済み問題 ({{ filteredQuestions.length }}件)
-          </h2>
-          <input
-            v-model="searchQuery"
-            placeholder="検索 (年度, 番号, 文言)..."
-            class="p-2 border rounded-lg text-sm w-64 shadow-sm"
-          />
-        </div>
-
-        <div v-if="loadingData" class="text-center py-10 text-slate-400">
-          読み込み中...
-        </div>
-
-        <div v-else class="space-y-4">
-          <div
-            v-for="q in filteredQuestions"
-            :key="q.id"
-            class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 hover:border-blue-300 transition group relative"
-          >
-            <div v-if="editingId === q.id" class="space-y-3">
-              <div
-                class="bg-orange-50 p-3 rounded-lg border border-orange-100 mb-2"
-              >
-                <p class="text-xs font-bold text-orange-600 mb-2">編集中...</p>
-                <div class="grid grid-cols-2 gap-2 mb-2">
-                  <input
-                    v-model="editForm.examYear"
-                    class="p-1 border rounded text-xs"
-                  />
-                  <input
-                    v-model="editForm.questionNumber"
-                    class="p-1 border rounded text-xs"
-                  />
-                </div>
-                <textarea
-                  v-model="editForm.text"
-                  class="w-full p-1 border rounded text-xs mb-2"
-                  rows="2"
-                ></textarea>
-                <div
-                  v-for="(c, i) in editForm.choices"
-                  :key="i"
-                  class="flex items-center gap-1 mb-1"
-                >
-                  <input
-                    type="checkbox"
-                    :value="i"
-                    v-model="editForm.correctIndices"
-                    class="w-4 h-4"
-                  />
-                  <input
-                    v-model="editForm.choices[i]"
-                    class="flex-1 p-1 border rounded text-xs"
-                  />
-                </div>
-                <textarea
-                  v-model="editForm.explanation"
-                  class="w-full p-1 border rounded text-xs"
-                  rows="2"
-                  placeholder="解説"
-                ></textarea>
-              </div>
-              <div class="flex gap-2">
-                <button
-                  @click="handleUpdate(q.id)"
-                  class="flex-1 bg-green-600 text-white text-xs font-bold py-2 rounded hover:bg-green-700"
-                >
-                  保存
-                </button>
-                <button
-                  @click="cancelEdit"
-                  class="flex-1 bg-slate-400 text-white text-xs font-bold py-2 rounded hover:bg-slate-500"
-                >
-                  キャンセル
-                </button>
-              </div>
-            </div>
-
-            <div v-else>
-              <div class="flex justify-between items-start mb-2">
-                <span
-                  class="text-[10px] font-bold bg-slate-100 text-slate-600 px-2 py-1 rounded"
-                  >{{ q.examYear }} {{ q.questionNumber }}</span
-                >
-                <div
-                  class="flex gap-2 opacity-0 group-hover:opacity-100 transition"
-                >
-                  <button
-                    @click="startEdit(q)"
-                    class="text-xs text-blue-500 font-bold hover:underline"
-                  >
-                    編集
-                  </button>
-                  <button
-                    @click="handleDelete(q.id)"
-                    class="text-xs text-red-500 font-bold hover:underline"
-                  >
-                    削除
-                  </button>
-                </div>
-              </div>
-              <p class="text-sm font-bold text-slate-800 mb-2">{{ q.text }}</p>
-              <p class="text-xs text-slate-500 truncate">{{ q.explanation }}</p>
-            </div>
-          </div>
-        </div>
-      </section>
-    </main>
-  </div>
-</template>
-
-<script setup lang="ts">
-import { ref, onMounted, computed, reactive } from "vue";
-import { useRouter } from "vue-router";
-import { useNextNs } from "@/composables/useNextNs";
-import { useAdmin } from "@/composables/useAdmin";
-import { useMockExam } from "@/composables/useMockExam";
-import JsonUploader from "@/components/JsonUploader.vue"; // ★ 追加
-import type { Question } from "@/types";
-
-const router = useRouter();
-const {
-  masterQuestions,
-  fetchAllQuestions,
-  loading: loadingData,
-} = useNextNs();
-const { addQuestion, updateQuestion, removeQuestion, loading } = useAdmin();
-
-// ★ 追加: 模試ロジック
-const { activeExam, fetchLatestExam, createMockExam, closeAndReleaseExam } =
-  useMockExam();
-const newMockTitle = ref("");
-
-const searchQuery = ref("");
-const editingId = ref<string | null>(null);
-
-// 新規作成フォーム用データ
-const initNewQ = () => ({
-  examYear: "",
-  questionNumber: "",
-  type: "general",
-  text: "",
-  choices: ["", "", "", "", ""],
-  correctIndices: [] as number[],
-  explanation: "",
-  tags: [] as string[],
-});
-const newQ = reactive(initNewQ());
-
-// 編集フォーム用データ
-const editForm = reactive(initNewQ());
-
-onMounted(async () => {
-  await fetchAllQuestions();
-  await fetchLatestExam(); // 追加
-});
-
-// ★ 追加: 模試作成ハンドラ
-const handleCreateMock = async () => {
-  if (!newMockTitle.value) return alert("タイトルを入力してください");
-  await createMockExam(newMockTitle.value, 3, masterQuestions.value); // 3日後を締切に
-  newMockTitle.value = "";
-};
-
-// 検索フィルタリング
-const filteredQuestions = computed(() => {
-  if (!searchQuery.value) return masterQuestions.value;
-  const q = searchQuery.value.toLowerCase();
-  return masterQuestions.value.filter(
-    (item) =>
-      item.text.toLowerCase().includes(q) ||
-      item.examYear.includes(q) ||
-      item.questionNumber.includes(q)
-  );
-});
-
-// 新規追加
-const handleSubmitNew = async () => {
-  if (newQ.correctIndices.length === 0) {
-    alert("正解の選択肢にチェックを入れてください");
-    return;
-  }
-  await addQuestion(newQ as any);
-  // リセット & 再読み込み
-  Object.assign(newQ, initNewQ());
-  window.location.reload();
-};
-
-// 編集開始
-const startEdit = (q: Question) => {
-  editingId.value = q.id;
-  const data = JSON.parse(JSON.stringify(q));
-  while (data.choices.length < 5) data.choices.push("");
-  Object.assign(editForm, data);
-};
-
-// 編集キャンセル
-const cancelEdit = () => {
-  editingId.value = null;
-  Object.assign(editForm, initNewQ());
-};
-
-// 更新実行
-const handleUpdate = async (id: string) => {
-  if (editForm.correctIndices.length === 0) {
-    alert("正解を選択してください");
-    return;
-  }
-  await updateQuestion(id, editForm as any);
-  editingId.value = null;
-  window.location.reload();
-};
-
-// 削除実行
-const handleDelete = async (id: string) => {
-  await removeQuestion(id);
-  window.location.reload();
-};
-</script>
-</file>
-
 <file path="src/views/LegalView/LegalView.vue">
 <script setup lang="ts">
 import { useRouter } from "vue-router";
@@ -3353,368 +2614,6 @@ const router = useRouter();
 `[ここに番地・建物名を記入]`
 の部分を、**Stripeに提出した身分証明書と一言一句同じ住所** に書き換える。 3.
 再度デプロイする。 ```bash npm run build firebase deploy
-</file>
-
-<file path="src/views/MockExamView/MockExamView.vue">
-<script setup lang="ts">
-import { ref, onMounted, computed } from "vue";
-import { useRouter } from "vue-router";
-import { useNextNs } from "@/composables/useNextNs";
-import { useMockExam } from "@/composables/useMockExam";
-
-const router = useRouter();
-const { currentUser } = useNextNs();
-const {
-  loading,
-  activeExam,
-  userSubmission,
-  examQuestions,
-  fetchLatestExam,
-  loadExamQuestions,
-  submitExam,
-} = useMockExam();
-
-const userAnswers = ref<number[]>([]);
-const isTakingExam = ref(false);
-
-onMounted(async () => {
-  if (currentUser.value) {
-    await fetchLatestExam(currentUser.value.uid);
-  }
-});
-
-const startExam = async () => {
-  await loadExamQuestions();
-  userAnswers.value = new Array(examQuestions.value.length).fill(-1);
-  isTakingExam.value = true;
-  window.scrollTo(0, 0);
-};
-
-const handleSubmit = async () => {
-  const unansweredCount = userAnswers.value.filter((a) => a === -1).length;
-  if (unansweredCount > 0) {
-    if (!confirm(`未回答が ${unansweredCount} 問あります。\n提出しますか？`))
-      return;
-  } else {
-    if (!confirm("提出しますか？\n提出後の修正はできません。")) return;
-  }
-
-  if (currentUser.value) {
-    await submitExam(
-      currentUser.value.uid,
-      userAnswers.value,
-      examQuestions.value
-    );
-    isTakingExam.value = false;
-    window.scrollTo(0, 0);
-  }
-};
-
-// 合否判定（必修クリア かつ 一般クリア）
-const judgeResult = computed(() => {
-  const stats = activeExam.value?.stats;
-  const sub = userSubmission.value;
-  if (!stats || !sub) return null;
-
-  const isMandatoryOk = sub.mandatoryScore >= stats.mandatoryBorder;
-  const isGeneralOk = sub.generalScore >= stats.generalBorder;
-
-  return isMandatoryOk && isGeneralOk ? "合格" : "不合格";
-});
-
-// 不合格理由
-const failReason = computed(() => {
-  if (judgeResult.value === "合格") return null;
-  const stats = activeExam.value?.stats;
-  const sub = userSubmission.value;
-  if (!stats || !sub) return "";
-
-  const reasons = [];
-  if (sub.mandatoryScore < stats.mandatoryBorder) reasons.push("必修落ち");
-  if (sub.generalScore < stats.generalBorder) reasons.push("一般得点不足");
-  return reasons.join("・");
-});
-
-const deadlineString = computed(() => {
-  if (!activeExam.value?.deadline) return "";
-  return activeExam.value.deadline.toLocaleDateString() + " まで";
-});
-</script>
-
-<template>
-  <div class="min-h-screen bg-slate-50 font-sans pb-32">
-    <header
-      class="bg-white px-6 py-4 shadow-sm flex items-center gap-4 sticky top-0 z-30"
-    >
-      <button
-        @click="router.push('/')"
-        class="text-slate-400 font-bold text-sm"
-      >
-        ← HOME
-      </button>
-      <h1 class="text-lg font-black text-slate-800">📊 全国統一模試</h1>
-    </header>
-
-    <main class="max-w-md mx-auto px-6 pt-8">
-      <div
-        v-if="loading"
-        class="text-center py-20 text-slate-400 font-bold animate-pulse"
-      >
-        通信中...
-      </div>
-
-      <div
-        v-else-if="!activeExam"
-        class="text-center py-12 bg-white rounded-3xl shadow-sm border border-slate-100"
-      >
-        <p class="text-4xl mb-4">💤</p>
-        <p class="font-bold text-slate-600">現在開催中の模試はありません</p>
-      </div>
-
-      <div v-else-if="isTakingExam" class="space-y-8">
-        <div
-          class="bg-blue-600 text-white p-4 rounded-xl shadow-lg sticky top-20 z-20 flex justify-between items-center"
-        >
-          <span class="font-bold text-sm">残り問題数</span>
-          <span class="text-xl font-black"
-            >{{ userAnswers.filter((a) => a === -1).length }} /
-            {{ examQuestions.length }}問</span
-          >
-        </div>
-
-        <div
-          v-for="(q, idx) in examQuestions"
-          :key="q.id"
-          class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100"
-        >
-          <div class="flex justify-between mb-4">
-            <span
-              class="bg-slate-100 text-slate-500 text-xs font-bold px-2 py-1 rounded"
-              >第{{ idx + 1 }}問</span
-            >
-            <span
-              class="text-[10px] font-bold px-2 py-1 rounded"
-              :class="
-                q.type === 'mandatory'
-                  ? 'bg-red-100 text-red-600'
-                  : 'bg-blue-50 text-blue-600'
-              "
-            >
-              {{ q.type === "mandatory" ? "必修" : "一般" }}
-            </span>
-          </div>
-          <h3 class="font-bold text-slate-800 mb-6 leading-relaxed">
-            {{ q.text }}
-          </h3>
-          <div class="space-y-3">
-            <button
-              v-for="(choice, cIdx) in q.choices"
-              :key="cIdx"
-              @click="userAnswers[idx] = cIdx"
-              class="w-full text-left p-4 rounded-xl border-2 transition font-bold text-sm"
-              :class="
-                userAnswers[idx] === cIdx
-                  ? 'border-blue-500 bg-blue-50 text-blue-700'
-                  : 'border-slate-100 hover:bg-slate-50 text-slate-600'
-              "
-            >
-              <span class="mr-2 opacity-50">{{ cIdx + 1 }}.</span> {{ choice }}
-            </button>
-          </div>
-        </div>
-
-        <button
-          @click="handleSubmit"
-          class="w-full py-5 bg-green-600 text-white font-black rounded-3xl shadow-xl active:scale-95 transition"
-        >
-          回答を提出する
-        </button>
-      </div>
-
-      <div
-        v-else-if="
-          activeExam.status === 'released' && userSubmission && activeExam.stats
-        "
-        class="animate-fade-in space-y-6"
-      >
-        <div
-          class="bg-white rounded-[40px] p-8 shadow-xl text-center border-4 relative overflow-hidden"
-          :class="judgeResult === '合格' ? 'border-red-500' : 'border-blue-500'"
-        >
-          <div
-            v-if="judgeResult === '合格'"
-            class="absolute -right-10 -top-10 text-9xl opacity-10"
-          >
-            🌸
-          </div>
-
-          <p
-            class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2"
-          >
-            JUDGMENT
-          </p>
-          <h2
-            class="text-6xl font-black mb-2"
-            :class="judgeResult === '合格' ? 'text-red-500' : 'text-blue-500'"
-          >
-            {{ judgeResult }}
-          </h2>
-          <p
-            v-if="judgeResult === '不合格'"
-            class="text-xs font-bold text-slate-500 bg-slate-100 inline-block px-3 py-1 rounded-full mb-4"
-          >
-            原因: {{ failReason }}
-          </p>
-
-          <div class="space-y-3 mt-4">
-            <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-              <div class="flex justify-between items-center mb-1">
-                <span class="text-xs font-bold text-red-500">必修問題</span>
-                <span class="text-[10px] text-slate-400"
-                  >ボーダー: {{ activeExam.stats.mandatoryBorder }}点</span
-                >
-              </div>
-              <div class="flex items-end gap-1">
-                <span
-                  class="text-2xl font-black text-slate-800"
-                  :class="{
-                    'text-red-500':
-                      userSubmission.mandatoryScore <
-                      activeExam.stats.mandatoryBorder,
-                  }"
-                >
-                  {{ userSubmission.mandatoryScore }}
-                </span>
-                <span class="text-xs font-bold text-slate-400 mb-1"
-                  >/ {{ activeExam.stats.mandatoryMax }}点</span
-                >
-                <span
-                  class="ml-auto text-xs font-bold px-2 py-0.5 rounded"
-                  :class="
-                    userSubmission.mandatoryScore >=
-                    activeExam.stats.mandatoryBorder
-                      ? 'bg-green-100 text-green-600'
-                      : 'bg-red-100 text-red-600'
-                  "
-                >
-                  {{
-                    userSubmission.mandatoryScore >=
-                    activeExam.stats.mandatoryBorder
-                      ? "クリア"
-                      : "不可"
-                  }}
-                </span>
-              </div>
-            </div>
-
-            <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-              <div class="flex justify-between items-center mb-1">
-                <span class="text-xs font-bold text-blue-500">一般・状況</span>
-                <span class="text-[10px] text-slate-400"
-                  >ボーダー: {{ activeExam.stats.generalBorder }}点</span
-                >
-              </div>
-              <div class="flex items-end gap-1">
-                <span
-                  class="text-2xl font-black text-slate-800"
-                  :class="{
-                    'text-blue-500':
-                      userSubmission.generalScore <
-                      activeExam.stats.generalBorder,
-                  }"
-                >
-                  {{ userSubmission.generalScore }}
-                </span>
-                <span class="text-xs font-bold text-slate-400 mb-1"
-                  >/ {{ activeExam.stats.generalMax }}点</span
-                >
-                <span
-                  class="ml-auto text-xs font-bold px-2 py-0.5 rounded"
-                  :class="
-                    userSubmission.generalScore >=
-                    activeExam.stats.generalBorder
-                      ? 'bg-green-100 text-green-600'
-                      : 'bg-red-100 text-red-600'
-                  "
-                >
-                  {{
-                    userSubmission.generalScore >=
-                    activeExam.stats.generalBorder
-                      ? "クリア"
-                      : "不可"
-                  }}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div class="mt-4 text-[10px] font-bold text-slate-400">
-            受験者数: {{ activeExam.stats.totalParticipants }}人 | 平均点(一般):
-            {{ activeExam.stats.generalAverage }}点
-          </div>
-        </div>
-      </div>
-
-      <div
-        v-else-if="userSubmission"
-        class="text-center py-16 bg-white rounded-3xl shadow-sm border border-slate-100"
-      >
-        <div class="text-6xl mb-6">📮</div>
-        <h2 class="text-xl font-black text-slate-800 mb-2">提出済みです</h2>
-        <p class="text-sm text-slate-500 mb-6 leading-relaxed">
-          現在、集計期間中です。<br />
-          結果発表までしばらくお待ちください。
-        </p>
-      </div>
-
-      <div v-else class="space-y-6">
-        <div
-          class="bg-gradient-to-br from-indigo-600 to-blue-500 rounded-[32px] p-8 text-white shadow-xl shadow-blue-200 text-center relative overflow-hidden"
-        >
-          <div class="relative z-10">
-            <span
-              class="bg-white/20 text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-widest"
-              >New Exam</span
-            >
-            <h2 class="text-2xl font-black mt-4 mb-2">
-              {{ activeExam.title }}
-            </h2>
-            <p class="text-sm font-bold text-blue-100">
-              締切: {{ deadlineString }}
-            </p>
-          </div>
-          <div class="absolute -bottom-10 -right-10 text-9xl opacity-20">
-            📝
-          </div>
-        </div>
-
-        <button
-          @click="startExam"
-          class="w-full py-5 bg-slate-900 text-white font-black rounded-3xl shadow-xl active:scale-95 transition flex items-center justify-center gap-2"
-        >
-          <span>模試を開始する</span>
-          <span>→</span>
-        </button>
-      </div>
-    </main>
-  </div>
-</template>
-
-<style scoped>
-.animate-fade-in {
-  animation: fadeIn 0.5s ease-out;
-}
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-</style>
 </file>
 
 <file path="src/views/PremiumView/PremiumView.vue">
@@ -4673,6 +3572,773 @@ export function useReservationModal(emit: (event: "saved") => void) {
 }
 </file>
 
+<file path="src/composables/useMockExam.ts">
+import { ref } from "vue";
+import { db } from "@/firebase";
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  setDoc,
+  updateDoc,
+  deleteDoc, // ★ 追加
+  query,
+  orderBy,
+  serverTimestamp,
+  limit,
+} from "firebase/firestore";
+import type { Question } from "@/types";
+
+// 模試データの型定義
+export interface MockExam {
+  id: string;
+  title: string;
+  status: "active" | "closed" | "released";
+  questionIds: string[];
+  deadline: any;
+  createdAt: any;
+  // ★ 統計データを国試用に詳細化
+  stats?: {
+    totalParticipants: number;
+    // 必修問題
+    mandatoryMax: number; // 満点
+    mandatoryBorder: number; // 合格ライン(80%)
+    // 一般+状況設定問題
+    generalMax: number; // 満点
+    generalBorder: number; // 合格ライン(相対評価)
+    generalAverage: number; // 平均点
+  };
+}
+
+// ユーザーの回答データの型定義
+export interface MockSubmission {
+  userId: string;
+  userAnswers: number[];
+  score: number; // 総合点
+  mandatoryScore: number; // ★追加: 必修の得点
+  generalScore: number; // ★追加: 一般+状況の得点
+  submittedAt: any;
+}
+
+export function useMockExam() {
+  const loading = ref(false);
+  const activeExam = ref<MockExam | null>(null);
+  const userSubmission = ref<MockSubmission | null>(null);
+  const examQuestions = ref<Question[]>([]);
+
+  // 1. 最新の模試情報を取得
+  const fetchLatestExam = async (userId?: string) => {
+    loading.value = true;
+    try {
+      const q = query(
+        collection(db, "mock_exams"),
+        orderBy("createdAt", "desc"),
+        limit(1)
+      );
+      const snap = await getDocs(q);
+
+      if (!snap.empty) {
+        const docData = snap.docs[0].data();
+        activeExam.value = {
+          id: snap.docs[0].id,
+          ...docData,
+          deadline: docData.deadline?.toDate
+            ? docData.deadline.toDate()
+            : new Date(docData.deadline),
+        } as MockExam;
+
+        if (userId) {
+          const subRef = doc(
+            db,
+            "mock_exams",
+            activeExam.value.id,
+            "submissions",
+            userId
+          );
+          const subSnap = await getDoc(subRef);
+          if (subSnap.exists()) {
+            userSubmission.value = subSnap.data() as MockSubmission;
+          } else {
+            userSubmission.value = null;
+          }
+        }
+      } else {
+        activeExam.value = null;
+      }
+    } catch (e) {
+      console.error("模試取得エラー", e);
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  // 2. 問題ロード
+  const loadExamQuestions = async () => {
+    if (!activeExam.value) return;
+    loading.value = true;
+    const list: Question[] = [];
+    for (const qId of activeExam.value.questionIds) {
+      const snap = await getDoc(doc(db, "questions", qId));
+      if (snap.exists()) {
+        list.push({ id: snap.id, ...snap.data() } as Question);
+      }
+    }
+    examQuestions.value = list;
+    loading.value = false;
+  };
+
+  // 3. 提出 (点数を種別ごとに集計して保存)
+  const submitExam = async (
+    userId: string,
+    answers: number[],
+    questions: Question[]
+  ) => {
+    if (!activeExam.value) return;
+    loading.value = true;
+
+    try {
+      let totalScore = 0;
+      let mandatoryScore = 0;
+      let generalScore = 0;
+
+      questions.forEach((q, index) => {
+        // 正解しているか
+        const isCorrect = q.correctIndices.includes(answers[index]);
+        if (isCorrect) {
+          totalScore++;
+          // 問題タイプで振り分け
+          if (q.type === "mandatory") {
+            mandatoryScore++;
+          } else {
+            generalScore++; // 一般 or 状況設定
+          }
+        }
+      });
+
+      const submissionData = {
+        userId,
+        userAnswers: answers,
+        score: totalScore,
+        mandatoryScore,
+        generalScore,
+        submittedAt: serverTimestamp(),
+      };
+
+      // Firestore保存
+      await setDoc(
+        doc(db, "mock_exams", activeExam.value.id, "submissions", userId),
+        submissionData
+      );
+
+      // ローカル更新
+      userSubmission.value = {
+        ...submissionData,
+        submittedAt: new Date(),
+      };
+
+      alert("提出が完了しました！\nお疲れ様でした。");
+    } catch (e: any) {
+      alert("提出に失敗しました: " + e.message);
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  // 4. 新規模試作成
+  const createMockExam = async (
+    title: string,
+    daysLater: number,
+    allQuestions: Question[]
+  ) => {
+    if (allQuestions.length < 30) {
+      alert("問題数が足りません");
+      return;
+    }
+    loading.value = true;
+    try {
+      const shuffled = [...allQuestions].sort(() => 0.5 - Math.random());
+      const selected = shuffled.slice(0, 30);
+      const qIds = selected.map((q) => q.id);
+
+      const deadline = new Date();
+      deadline.setDate(deadline.getDate() + daysLater);
+
+      await setDoc(doc(collection(db, "mock_exams")), {
+        title,
+        status: "active",
+        questionIds: qIds,
+        deadline: deadline,
+        createdAt: serverTimestamp(),
+      });
+
+      alert(`「${title}」を作成しました！`);
+      await fetchLatestExam();
+    } catch (e: any) {
+      alert("作成失敗: " + e.message);
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  // 5. ★★★ 集計ロジック（国試仕様） ★★★
+  const closeAndReleaseExam = async (examId: string) => {
+    if (
+      !confirm(
+        "回答を締め切って集計しますか？\n実際の国試基準（必修8割・一般相対評価）で判定します。"
+      )
+    )
+      return;
+
+    loading.value = true;
+    try {
+      // 1. 全回答を取得
+      const subCol = collection(db, "mock_exams", examId, "submissions");
+      const snap = await getDocs(subCol);
+      const submissions = snap.docs.map((d) => d.data() as MockSubmission);
+
+      const totalParticipants = submissions.length;
+      if (totalParticipants === 0) throw new Error("回答者が0人です");
+
+      // 2. 問題情報を再取得して配点を計算（満点を出すため）
+      const examDoc = await getDoc(doc(db, "mock_exams", examId));
+      const qIds = examDoc.data()?.questionIds || [];
+
+      let mandatoryMax = 0;
+      let generalMax = 0;
+
+      // 30問分のデータを取得して満点を計算
+      for (const qId of qIds) {
+        const qSnap = await getDoc(doc(db, "questions", qId));
+        if (qSnap.exists()) {
+          const qData = qSnap.data();
+          if (qData.type === "mandatory") mandatoryMax++;
+          else generalMax++;
+        }
+      }
+
+      // 3. 【必修】ボーダー計算（絶対評価 80%）
+      const mandatoryBorder = Math.ceil(mandatoryMax * 0.8);
+
+      // 4. 【一般】ボーダー計算（相対評価 合格率約90%ライン）
+      // 一般スコアだけで降順ソート
+      const sortedGeneralScores = submissions
+        .map((s) => s.generalScore)
+        .sort((a, b) => b - a);
+
+      // 上位90%のラインを計算
+      // 例: 100人いたら90番目の人の点数がボーダー
+      // もし人数が少なすぎる場合は、平均点などを代用する安全策も考慮できますが、
+      // 今回は厳密に「下位10%切り捨て」ロジックで実装します。
+      const borderIndex = Math.floor(totalParticipants * 0.9) - 1;
+      const safeBorderIndex = Math.max(0, borderIndex); // インデックスが負にならないよう調整
+
+      const generalBorder = sortedGeneralScores[safeBorderIndex];
+
+      // 一般の平均点（参考用）
+      const totalGeneral = submissions.reduce(
+        (sum, s) => sum + s.generalScore,
+        0
+      );
+      const generalAverage =
+        Math.round((totalGeneral / totalParticipants) * 10) / 10;
+
+      // 5. 保存
+      await updateDoc(doc(db, "mock_exams", examId), {
+        status: "released",
+        stats: {
+          totalParticipants,
+          mandatoryMax,
+          mandatoryBorder,
+          generalMax,
+          generalBorder,
+          generalAverage,
+        },
+      });
+
+      alert(
+        `集計完了！\n参加者: ${totalParticipants}人\n必修ボーダー: ${mandatoryBorder}点\n一般ボーダー: ${generalBorder}点`
+      );
+      await fetchLatestExam();
+    } catch (e: any) {
+      alert("集計エラー: " + e.message);
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  // ★★★ 6. 追加: 模試削除機能 ★★★
+  const deleteMockExam = async (examId: string) => {
+    if (
+      !confirm(
+        "本当にこの模試を削除しますか？\n回答データも全てアクセスできなくなります。"
+      )
+    )
+      return;
+
+    loading.value = true;
+    try {
+      // サブコレクションの削除はクライアントSDKからは原則1つずつ消す必要があるが、
+      // 親ドキュメントを消せばアプリ上からは見えなくなるので今回は親のみ削除
+      // (厳密にはCloud Functions等でサブコレクションも消すのがベスト)
+      await deleteDoc(doc(db, "mock_exams", examId));
+      alert("削除しました");
+      activeExam.value = null; // 画面表示をクリア
+      await fetchLatestExam(); // 最新状態（もし他にあれば）を取得
+    } catch (e: any) {
+      alert("削除エラー: " + e.message);
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  return {
+    loading,
+    activeExam,
+    userSubmission,
+    examQuestions,
+    fetchLatestExam,
+    loadExamQuestions,
+    submitExam,
+    createMockExam,
+    closeAndReleaseExam,
+    deleteMockExam, // ★ エクスポート追加
+  };
+}
+</file>
+
+<file path="src/views/AdminView/AdminView.vue">
+<template>
+  <div class="min-h-screen bg-slate-100 font-sans pb-20">
+    <header
+      class="bg-slate-800 text-white px-6 py-4 shadow-md sticky top-0 z-50"
+    >
+      <div class="max-w-4xl mx-auto flex justify-between items-center">
+        <h1 class="font-bold text-lg flex items-center gap-2">
+          🛠️ 管理者ダッシュボード
+        </h1>
+        <button
+          @click="router.push('/')"
+          class="text-xs bg-slate-700 px-3 py-2 rounded hover:bg-slate-600 transition"
+        >
+          アプリに戻る
+        </button>
+      </div>
+    </header>
+
+    <main class="max-w-4xl mx-auto px-4 mt-8 space-y-8">
+      <section
+        class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 relative overflow-hidden"
+      >
+        <div class="absolute top-0 right-0 p-4 opacity-10 text-6xl">📊</div>
+        <h2
+          class="font-bold text-slate-700 mb-6 flex items-center gap-2 relative z-10"
+        >
+          <span class="bg-indigo-100 text-indigo-600 p-1 rounded">👑</span>
+          一斉模試センター
+        </h2>
+
+        <div
+          v-if="activeExam"
+          class="bg-indigo-50 p-5 rounded-xl border border-indigo-100 mb-6 relative"
+        >
+          <button
+            @click="deleteMockExam(activeExam.id)"
+            class="absolute top-4 right-4 text-xs text-red-500 font-bold hover:underline bg-white px-2 py-1 rounded shadow-sm"
+          >
+            🗑️ 削除
+          </button>
+
+          <div class="flex justify-between items-start mb-2 pr-16">
+            <h3 class="font-black text-indigo-800 text-lg">
+              {{ activeExam.title }}
+            </h3>
+            <span
+              class="text-xs font-bold px-2 py-1 rounded bg-white text-indigo-600 border border-indigo-100 whitespace-nowrap"
+            >
+              {{ activeExam.status === "active" ? "開催中" : "公開済み" }}
+            </span>
+          </div>
+          <p class="text-xs text-indigo-500 mb-4">
+            締切: {{ new Date(activeExam.deadline).toLocaleDateString() }}
+          </p>
+
+          <div v-if="activeExam.status === 'active'">
+            <button
+              @click="closeAndReleaseExam(activeExam.id)"
+              :disabled="loading"
+              class="w-full py-3 bg-red-500 text-white font-bold rounded-lg shadow hover:bg-red-600 transition active:scale-95"
+            >
+              🚨 締め切って集計・結果公開する
+            </button>
+            <p class="text-[10px] text-center text-slate-400 mt-2">
+              ※ これを押すとユーザーに合否が表示されます
+            </p>
+          </div>
+          <div v-else>
+            <div
+              class="grid grid-cols-3 gap-2 text-center bg-white p-3 rounded-lg"
+            >
+              <div>
+                <p class="text-[9px] text-slate-400">受験者</p>
+                <p class="font-bold">
+                  {{ activeExam.stats?.totalParticipants }}人
+                </p>
+              </div>
+              <div>
+                <p class="text-[9px] text-slate-400">平均(一般)</p>
+                <p class="font-bold">
+                  {{ activeExam.stats?.generalAverage }}点
+                </p>
+              </div>
+              <div>
+                <p class="text-[9px] text-slate-400">合格点(一般)</p>
+                <p class="font-bold text-red-500">
+                  {{ activeExam.stats?.generalBorder }}点
+                </p>
+              </div>
+            </div>
+            <div class="mt-2 text-center text-[10px] text-slate-400">
+              必修合格点: {{ activeExam.stats?.mandatoryBorder }}点 /
+              {{ activeExam.stats?.mandatoryMax }}点
+            </div>
+          </div>
+        </div>
+
+        <div class="border-t border-slate-100 pt-6">
+          <h3 class="text-sm font-bold text-slate-600 mb-3">新規模試の作成</h3>
+          <div class="flex gap-2">
+            <input
+              v-model="newMockTitle"
+              placeholder="タイトル (例: 第3回 全国模試)"
+              class="flex-1 p-2 border rounded-lg text-sm outline-none focus:border-indigo-500"
+            />
+            <button
+              @click="handleCreateMock"
+              class="bg-indigo-600 text-white font-bold px-4 rounded-lg text-sm hover:bg-indigo-700 transition"
+            >
+              作成
+            </button>
+          </div>
+          <p class="text-[10px] text-slate-400 mt-2">
+            ※
+            データベース内の全問題からランダムに30問選出され、3日後が締切になります。
+          </p>
+        </div>
+      </section>
+
+      <section
+        class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200"
+      >
+        <h2 class="font-bold text-slate-700 mb-4 flex items-center gap-2">
+          <span class="bg-green-100 text-green-600 p-1 rounded">＋</span>
+          新規問題追加
+        </h2>
+
+        <form @submit.prevent="handleSubmitNew" class="space-y-4">
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-bold text-slate-500 mb-1"
+                >年度 (例: 第106回)</label
+              >
+              <input
+                v-model="newQ.examYear"
+                required
+                class="w-full p-2 border rounded-lg text-sm bg-slate-50 focus:bg-white focus:ring-2 ring-blue-200 outline-none"
+                placeholder="第〇〇回"
+              />
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-500 mb-1"
+                >番号 (例: 午前1)</label
+              >
+              <input
+                v-model="newQ.questionNumber"
+                required
+                class="w-full p-2 border rounded-lg text-sm bg-slate-50 focus:bg-white focus:ring-2 ring-blue-200 outline-none"
+                placeholder="午前〇〇"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-500 mb-1"
+              >問題文</label
+            >
+            <textarea
+              v-model="newQ.text"
+              required
+              rows="3"
+              class="w-full p-2 border rounded-lg text-sm bg-slate-50 focus:bg-white focus:ring-2 ring-blue-200 outline-none"
+              placeholder="問題文を入力..."
+            ></textarea>
+          </div>
+
+          <div class="space-y-2">
+            <label class="block text-xs font-bold text-slate-500"
+              >選択肢 (正解にチェックを入れる)</label
+            >
+            <div
+              v-for="(choice, i) in newQ.choices"
+              :key="i"
+              class="flex items-center gap-2"
+            >
+              <input
+                type="checkbox"
+                :value="i"
+                v-model="newQ.correctIndices"
+                class="w-5 h-5 text-blue-600 rounded focus:ring-blue-500"
+              />
+              <input
+                v-model="newQ.choices[i]"
+                class="flex-1 p-2 border rounded-lg text-sm bg-slate-50 focus:bg-white"
+                :placeholder="`選択肢 ${i + 1}`"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-500 mb-1"
+              >解説</label
+            >
+            <textarea
+              v-model="newQ.explanation"
+              rows="2"
+              class="w-full p-2 border rounded-lg text-sm bg-slate-50 focus:bg-white focus:ring-2 ring-blue-200 outline-none"
+              placeholder="解説を入力..."
+            ></textarea>
+          </div>
+
+          <button
+            type="submit"
+            :disabled="loading"
+            class="w-full py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition active:scale-95 disabled:opacity-50"
+          >
+            {{ loading ? "処理中..." : "データベースに追加する" }}
+          </button>
+        </form>
+      </section>
+
+      <JsonUploader />
+
+      <section class="space-y-4">
+        <div class="flex justify-between items-center">
+          <h2 class="font-bold text-slate-700">
+            登録済み問題 ({{ filteredQuestions.length }}件)
+          </h2>
+          <input
+            v-model="searchQuery"
+            placeholder="検索 (年度, 番号, 文言)..."
+            class="p-2 border rounded-lg text-sm w-64 shadow-sm"
+          />
+        </div>
+
+        <div v-if="loadingData" class="text-center py-10 text-slate-400">
+          読み込み中...
+        </div>
+
+        <div v-else class="space-y-4">
+          <div
+            v-for="q in filteredQuestions"
+            :key="q.id"
+            class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 hover:border-blue-300 transition group relative"
+          >
+            <div v-if="editingId === q.id" class="space-y-3">
+              <div
+                class="bg-orange-50 p-3 rounded-lg border border-orange-100 mb-2"
+              >
+                <p class="text-xs font-bold text-orange-600 mb-2">編集中...</p>
+                <div class="grid grid-cols-2 gap-2 mb-2">
+                  <input
+                    v-model="editForm.examYear"
+                    class="p-1 border rounded text-xs"
+                  />
+                  <input
+                    v-model="editForm.questionNumber"
+                    class="p-1 border rounded text-xs"
+                  />
+                </div>
+                <textarea
+                  v-model="editForm.text"
+                  class="w-full p-1 border rounded text-xs mb-2"
+                  rows="2"
+                ></textarea>
+                <div
+                  v-for="(c, i) in editForm.choices"
+                  :key="i"
+                  class="flex items-center gap-1 mb-1"
+                >
+                  <input
+                    type="checkbox"
+                    :value="i"
+                    v-model="editForm.correctIndices"
+                    class="w-4 h-4"
+                  />
+                  <input
+                    v-model="editForm.choices[i]"
+                    class="flex-1 p-1 border rounded text-xs"
+                  />
+                </div>
+                <textarea
+                  v-model="editForm.explanation"
+                  class="w-full p-1 border rounded text-xs"
+                  rows="2"
+                  placeholder="解説"
+                ></textarea>
+              </div>
+              <div class="flex gap-2">
+                <button
+                  @click="handleUpdate(q.id)"
+                  class="flex-1 bg-green-600 text-white text-xs font-bold py-2 rounded hover:bg-green-700"
+                >
+                  保存
+                </button>
+                <button
+                  @click="cancelEdit"
+                  class="flex-1 bg-slate-400 text-white text-xs font-bold py-2 rounded hover:bg-slate-500"
+                >
+                  キャンセル
+                </button>
+              </div>
+            </div>
+
+            <div v-else>
+              <div class="flex justify-between items-start mb-2">
+                <span
+                  class="text-[10px] font-bold bg-slate-100 text-slate-600 px-2 py-1 rounded"
+                  >{{ q.examYear }} {{ q.questionNumber }}</span
+                >
+                <div
+                  class="flex gap-2 opacity-0 group-hover:opacity-100 transition"
+                >
+                  <button
+                    @click="startEdit(q)"
+                    class="text-xs text-blue-500 font-bold hover:underline"
+                  >
+                    編集
+                  </button>
+                  <button
+                    @click="handleDelete(q.id)"
+                    class="text-xs text-red-500 font-bold hover:underline"
+                  >
+                    削除
+                  </button>
+                </div>
+              </div>
+              <p class="text-sm font-bold text-slate-800 mb-2">{{ q.text }}</p>
+              <p class="text-xs text-slate-500 truncate">{{ q.explanation }}</p>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, onMounted, computed, reactive } from "vue";
+import { useRouter } from "vue-router";
+import { useNextNs } from "@/composables/useNextNs";
+import { useAdmin } from "@/composables/useAdmin";
+import { useMockExam } from "@/composables/useMockExam";
+import JsonUploader from "@/components/JsonUploader.vue"; // ★ 追加
+import type { Question } from "@/types";
+
+const router = useRouter();
+const {
+  masterQuestions,
+  fetchAllQuestions,
+  loading: loadingData,
+} = useNextNs();
+const { addQuestion, updateQuestion, removeQuestion, loading } = useAdmin();
+
+// ★ 追加: 模試ロジック (deleteMockExam を追加)
+const {
+  activeExam,
+  fetchLatestExam,
+  createMockExam,
+  closeAndReleaseExam,
+  deleteMockExam,
+} = useMockExam();
+const newMockTitle = ref("");
+
+const searchQuery = ref("");
+const editingId = ref<string | null>(null);
+
+const initNewQ = () => ({
+  examYear: "",
+  questionNumber: "",
+  type: "general",
+  text: "",
+  choices: ["", "", "", "", ""],
+  correctIndices: [] as number[],
+  explanation: "",
+  tags: [] as string[],
+});
+const newQ = reactive(initNewQ());
+const editForm = reactive(initNewQ());
+
+onMounted(async () => {
+  await fetchAllQuestions();
+  await fetchLatestExam();
+});
+
+const handleCreateMock = async () => {
+  if (!newMockTitle.value) return alert("タイトルを入力してください");
+  await createMockExam(newMockTitle.value, 3, masterQuestions.value);
+  newMockTitle.value = "";
+};
+
+const filteredQuestions = computed(() => {
+  if (!searchQuery.value) return masterQuestions.value;
+  const q = searchQuery.value.toLowerCase();
+  return masterQuestions.value.filter(
+    (item) =>
+      item.text.toLowerCase().includes(q) ||
+      item.examYear.includes(q) ||
+      item.questionNumber.includes(q)
+  );
+});
+
+const handleSubmitNew = async () => {
+  if (newQ.correctIndices.length === 0) {
+    alert("正解の選択肢にチェックを入れてください");
+    return;
+  }
+  await addQuestion(newQ as any);
+  Object.assign(newQ, initNewQ());
+  window.location.reload();
+};
+
+const startEdit = (q: Question) => {
+  editingId.value = q.id;
+  const data = JSON.parse(JSON.stringify(q));
+  while (data.choices.length < 5) data.choices.push("");
+  Object.assign(editForm, data);
+};
+
+const cancelEdit = () => {
+  editingId.value = null;
+  Object.assign(editForm, initNewQ());
+};
+
+const handleUpdate = async (id: string) => {
+  if (editForm.correctIndices.length === 0) {
+    alert("正解を選択してください");
+    return;
+  }
+  await updateQuestion(id, editForm as any);
+  editingId.value = null;
+  window.location.reload();
+};
+
+const handleDelete = async (id: string) => {
+  await removeQuestion(id);
+  window.location.reload();
+};
+</script>
+</file>
+
 <file path="src/views/HomeView/HomeView.ts">
 import { ref, onMounted, onUnmounted, computed, watch } from "vue";
 import { getAuth, signOut, onAuthStateChanged } from "firebase/auth";
@@ -5265,6 +4931,368 @@ const handleSubmit = async () => {
     </div>
   </div>
 </template>
+</file>
+
+<file path="src/views/MockExamView/MockExamView.vue">
+<script setup lang="ts">
+import { ref, onMounted, computed } from "vue";
+import { useRouter } from "vue-router";
+import { useNextNs } from "@/composables/useNextNs";
+import { useMockExam } from "@/composables/useMockExam";
+
+const router = useRouter();
+const { currentUser } = useNextNs();
+const {
+  loading,
+  activeExam,
+  userSubmission,
+  examQuestions,
+  fetchLatestExam,
+  loadExamQuestions,
+  submitExam,
+} = useMockExam();
+
+const userAnswers = ref<number[]>([]);
+const isTakingExam = ref(false);
+
+onMounted(async () => {
+  if (currentUser.value) {
+    await fetchLatestExam(currentUser.value.uid);
+  }
+});
+
+const startExam = async () => {
+  await loadExamQuestions();
+  userAnswers.value = new Array(examQuestions.value.length).fill(-1);
+  isTakingExam.value = true;
+  window.scrollTo(0, 0);
+};
+
+const handleSubmit = async () => {
+  const unansweredCount = userAnswers.value.filter((a) => a === -1).length;
+  if (unansweredCount > 0) {
+    if (!confirm(`未回答が ${unansweredCount} 問あります。\n提出しますか？`))
+      return;
+  } else {
+    if (!confirm("提出しますか？\n提出後の修正はできません。")) return;
+  }
+
+  if (currentUser.value) {
+    await submitExam(
+      currentUser.value.uid,
+      userAnswers.value,
+      examQuestions.value
+    );
+    isTakingExam.value = false;
+    window.scrollTo(0, 0);
+  }
+};
+
+// 合否判定（必修クリア かつ 一般クリア）
+const judgeResult = computed(() => {
+  const stats = activeExam.value?.stats;
+  const sub = userSubmission.value;
+  if (!stats || !sub) return null;
+
+  const isMandatoryOk = sub.mandatoryScore >= stats.mandatoryBorder;
+  const isGeneralOk = sub.generalScore >= stats.generalBorder;
+
+  return isMandatoryOk && isGeneralOk ? "合格" : "不合格";
+});
+
+// 不合格理由
+const failReason = computed(() => {
+  if (judgeResult.value === "合格") return null;
+  const stats = activeExam.value?.stats;
+  const sub = userSubmission.value;
+  if (!stats || !sub) return "";
+
+  const reasons = [];
+  if (sub.mandatoryScore < stats.mandatoryBorder) reasons.push("必修落ち");
+  if (sub.generalScore < stats.generalBorder) reasons.push("一般得点不足");
+  return reasons.join("・");
+});
+
+const deadlineString = computed(() => {
+  if (!activeExam.value?.deadline) return "";
+  return activeExam.value.deadline.toLocaleDateString() + " まで";
+});
+</script>
+
+<template>
+  <div class="min-h-screen bg-slate-50 font-sans pb-32">
+    <header
+      class="bg-white px-6 py-4 shadow-sm flex items-center gap-4 sticky top-0 z-30"
+    >
+      <button
+        @click="router.push('/')"
+        class="text-slate-400 font-bold text-sm"
+      >
+        ← HOME
+      </button>
+      <h1 class="text-lg font-black text-slate-800">📊 全国統一模試</h1>
+    </header>
+
+    <main class="max-w-md mx-auto px-6 pt-8">
+      <div
+        v-if="loading"
+        class="text-center py-20 text-slate-400 font-bold animate-pulse"
+      >
+        通信中...
+      </div>
+
+      <div
+        v-else-if="!activeExam"
+        class="text-center py-12 bg-white rounded-3xl shadow-sm border border-slate-100"
+      >
+        <p class="text-4xl mb-4">💤</p>
+        <p class="font-bold text-slate-600">現在開催中の模試はありません</p>
+      </div>
+
+      <div v-else-if="isTakingExam" class="space-y-8">
+        <div
+          class="bg-blue-600 text-white p-4 rounded-xl shadow-lg sticky top-20 z-20 flex justify-between items-center"
+        >
+          <span class="font-bold text-sm">残り問題数</span>
+          <span class="text-xl font-black"
+            >{{ userAnswers.filter((a) => a === -1).length }} /
+            {{ examQuestions.length }}問</span
+          >
+        </div>
+
+        <div
+          v-for="(q, idx) in examQuestions"
+          :key="q.id"
+          class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100"
+        >
+          <div class="flex justify-between mb-4">
+            <span
+              class="bg-slate-100 text-slate-500 text-xs font-bold px-2 py-1 rounded"
+              >第{{ idx + 1 }}問</span
+            >
+            <span
+              class="text-[10px] font-bold px-2 py-1 rounded"
+              :class="
+                q.type === 'mandatory'
+                  ? 'bg-red-100 text-red-600'
+                  : 'bg-blue-50 text-blue-600'
+              "
+            >
+              {{ q.type === "mandatory" ? "必修" : "一般" }}
+            </span>
+          </div>
+          <h3 class="font-bold text-slate-800 mb-6 leading-relaxed">
+            {{ q.text }}
+          </h3>
+          <div class="space-y-3">
+            <button
+              v-for="(choice, cIdx) in q.choices"
+              :key="cIdx"
+              @click="userAnswers[idx] = cIdx"
+              class="w-full text-left p-4 rounded-xl border-2 transition font-bold text-sm"
+              :class="
+                userAnswers[idx] === cIdx
+                  ? 'border-blue-500 bg-blue-50 text-blue-700'
+                  : 'border-slate-100 hover:bg-slate-50 text-slate-600'
+              "
+            >
+              <span class="mr-2 opacity-50">{{ cIdx + 1 }}.</span> {{ choice }}
+            </button>
+          </div>
+        </div>
+
+        <button
+          @click="handleSubmit"
+          class="w-full py-5 bg-green-600 text-white font-black rounded-3xl shadow-xl active:scale-95 transition"
+        >
+          回答を提出する
+        </button>
+      </div>
+
+      <div
+        v-else-if="
+          activeExam.status === 'released' && userSubmission && activeExam.stats
+        "
+        class="animate-fade-in space-y-6"
+      >
+        <div
+          class="bg-white rounded-[40px] p-8 shadow-xl text-center border-4 relative overflow-hidden"
+          :class="judgeResult === '合格' ? 'border-red-500' : 'border-blue-500'"
+        >
+          <div
+            v-if="judgeResult === '合格'"
+            class="absolute -right-10 -top-10 text-9xl opacity-10"
+          >
+            🌸
+          </div>
+
+          <p
+            class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2"
+          >
+            JUDGMENT
+          </p>
+          <h2
+            class="text-6xl font-black mb-2"
+            :class="judgeResult === '合格' ? 'text-red-500' : 'text-blue-500'"
+          >
+            {{ judgeResult }}
+          </h2>
+          <p
+            v-if="judgeResult === '不合格'"
+            class="text-xs font-bold text-slate-500 bg-slate-100 inline-block px-3 py-1 rounded-full mb-4"
+          >
+            原因: {{ failReason }}
+          </p>
+
+          <div class="space-y-3 mt-4">
+            <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+              <div class="flex justify-between items-center mb-1">
+                <span class="text-xs font-bold text-red-500">必修問題</span>
+                <span class="text-[10px] text-slate-400"
+                  >ボーダー: {{ activeExam.stats.mandatoryBorder }}点</span
+                >
+              </div>
+              <div class="flex items-end gap-1">
+                <span
+                  class="text-2xl font-black text-slate-800"
+                  :class="{
+                    'text-red-500':
+                      userSubmission.mandatoryScore <
+                      activeExam.stats.mandatoryBorder,
+                  }"
+                >
+                  {{ userSubmission.mandatoryScore }}
+                </span>
+                <span class="text-xs font-bold text-slate-400 mb-1"
+                  >/ {{ activeExam.stats.mandatoryMax }}点</span
+                >
+                <span
+                  class="ml-auto text-xs font-bold px-2 py-0.5 rounded"
+                  :class="
+                    userSubmission.mandatoryScore >=
+                    activeExam.stats.mandatoryBorder
+                      ? 'bg-green-100 text-green-600'
+                      : 'bg-red-100 text-red-600'
+                  "
+                >
+                  {{
+                    userSubmission.mandatoryScore >=
+                    activeExam.stats.mandatoryBorder
+                      ? "クリア"
+                      : "不可"
+                  }}
+                </span>
+              </div>
+            </div>
+
+            <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+              <div class="flex justify-between items-center mb-1">
+                <span class="text-xs font-bold text-blue-500">一般・状況</span>
+                <span class="text-[10px] text-slate-400"
+                  >ボーダー: {{ activeExam.stats.generalBorder }}点</span
+                >
+              </div>
+              <div class="flex items-end gap-1">
+                <span
+                  class="text-2xl font-black text-slate-800"
+                  :class="{
+                    'text-blue-500':
+                      userSubmission.generalScore <
+                      activeExam.stats.generalBorder,
+                  }"
+                >
+                  {{ userSubmission.generalScore }}
+                </span>
+                <span class="text-xs font-bold text-slate-400 mb-1"
+                  >/ {{ activeExam.stats.generalMax }}点</span
+                >
+                <span
+                  class="ml-auto text-xs font-bold px-2 py-0.5 rounded"
+                  :class="
+                    userSubmission.generalScore >=
+                    activeExam.stats.generalBorder
+                      ? 'bg-green-100 text-green-600'
+                      : 'bg-red-100 text-red-600'
+                  "
+                >
+                  {{
+                    userSubmission.generalScore >=
+                    activeExam.stats.generalBorder
+                      ? "クリア"
+                      : "不可"
+                  }}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-4 text-[10px] font-bold text-slate-400">
+            受験者数: {{ activeExam.stats.totalParticipants }}人 | 平均点(一般):
+            {{ activeExam.stats.generalAverage }}点
+          </div>
+        </div>
+      </div>
+
+      <div
+        v-else-if="userSubmission"
+        class="text-center py-16 bg-white rounded-3xl shadow-sm border border-slate-100"
+      >
+        <div class="text-6xl mb-6">📮</div>
+        <h2 class="text-xl font-black text-slate-800 mb-2">提出済みです</h2>
+        <p class="text-sm text-slate-500 mb-6 leading-relaxed">
+          現在、集計期間中です。<br />
+          結果発表までしばらくお待ちください。
+        </p>
+      </div>
+
+      <div v-else class="space-y-6">
+        <div
+          class="bg-gradient-to-br from-indigo-600 to-blue-500 rounded-[32px] p-8 text-white shadow-xl shadow-blue-200 text-center relative overflow-hidden"
+        >
+          <div class="relative z-10">
+            <span
+              class="bg-white/20 text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-widest"
+              >New Exam</span
+            >
+            <h2 class="text-2xl font-black mt-4 mb-2">
+              {{ activeExam.title }}
+            </h2>
+            <p class="text-sm font-bold text-blue-100">
+              締切: {{ deadlineString }}
+            </p>
+          </div>
+          <div class="absolute -bottom-10 -right-10 text-9xl opacity-20">
+            📝
+          </div>
+        </div>
+
+        <button
+          @click="startExam"
+          class="w-full py-5 bg-slate-900 text-white font-black rounded-3xl shadow-xl active:scale-95 transition flex items-center justify-center gap-2"
+        >
+          <span>模試を開始する</span>
+          <span>→</span>
+        </button>
+      </div>
+    </main>
+  </div>
+</template>
+
+<style scoped>
+.animate-fade-in {
+  animation: fadeIn 0.5s ease-out;
+}
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+</style>
 </file>
 
 <file path="src/views/ReviewView/ReviewView.vue">
@@ -5900,12 +5928,106 @@ onMounted(() => {
 </file>
 
 <file path="functions/lib/index.js">
-const functions = require("firebase-functions");
-const admin = require("firebase-admin");
+"use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.notifyOnMockExamCreated = void 0;
+const firestore_1 = require("firebase-functions/v2/firestore");
+const v2_1 = require("firebase-functions/v2"); // ★追加
+const admin = __importStar(require("firebase-admin"));
+// 旧コードの互換性のために残す（必要なら import * as functions from "firebase-functions"; に書き換えて使用）
+// const functions = require("firebase-functions");
+// ★追加: サーバーの場所を東京に設定
+(0, v2_1.setGlobalOptions)({ region: "asia-northeast1" });
+admin.initializeApp();
+/**
+ * ★新機能: 模試が作成されたときに、全ユーザーへプッシュ通知を送信する関数
+ */
+exports.notifyOnMockExamCreated = (0, firestore_1.onDocumentCreated)("mock_exams/{examId}", async (event) => {
+    const snapshot = event.data;
+    if (!snapshot)
+        return;
+    const examData = snapshot.data();
+    const title = examData.title || "新しい模試";
+    // 1. 送るメッセージの内容設定
+    const message = {
+        notification: {
+            title: "📢 全国統一模試が公開されました！",
+            body: `「${title}」の受付が開始されました。今すぐ実力をチェックしましょう！`,
+        },
+        webpush: {
+            fcmOptions: {
+                link: "/mock-exam", // 通知をタップしたら模試画面へ遷移
+            },
+        },
+    };
+    // 2. 全ユーザーのFCMトークンを取得
+    const usersSnap = await admin.firestore().collection("users").get();
+    let tokens = [];
+    usersSnap.forEach((doc) => {
+        const userData = doc.data();
+        // fcmTokens配列を持っているユーザーのトークンを収集
+        if (userData.fcmTokens && Array.isArray(userData.fcmTokens)) {
+            tokens.push(...userData.fcmTokens);
+        }
+    });
+    // 重複したトークンを削除
+    tokens = [...new Set(tokens)];
+    if (tokens.length === 0) {
+        console.log("送信先トークンがありません。");
+        return;
+    }
+    // 3. 一括送信 (最大500件ずつ)
+    try {
+        const response = await admin.messaging().sendEachForMulticast({
+            tokens: tokens,
+            notification: message.notification,
+            webpush: message.webpush,
+        });
+        console.log(`通知送信完了: 成功 ${response.successCount} 件 / 失敗 ${response.failureCount} 件`);
+    }
+    catch (error) {
+        console.error("通知送信エラー:", error);
+    }
+});
+// ============================================================
+//  以下、旧コード（Stripe決済機能など） ※念のためコメントアウトで保持
+// ============================================================
 // const stripe = require("stripe")(
 //   "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"
 // );
-admin.initializeApp();
 // // 1. 決済セッションを作成する関数（フロントから呼ばれる）
 // exports.createCheckoutSession = functions.https.onCall(
 //   async (data, context) => {
@@ -5964,13 +6086,87 @@ admin.initializeApp();
 </file>
 
 <file path="functions/index.ts">
-const functions = require("firebase-functions");
-const admin = require("firebase-admin");
+import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import { setGlobalOptions } from "firebase-functions/v2"; // ★追加
+import * as admin from "firebase-admin";
+
+// 旧コードの互換性のために残す（必要なら import * as functions from "firebase-functions"; に書き換えて使用）
+// const functions = require("firebase-functions");
+
+// ★追加: サーバーの場所を東京に設定
+setGlobalOptions({ region: "asia-northeast1" });
+
+admin.initializeApp();
+
+/**
+ * ★新機能: 模試が作成されたときに、全ユーザーへプッシュ通知を送信する関数
+ */
+export const notifyOnMockExamCreated = onDocumentCreated(
+  "mock_exams/{examId}",
+  async (event) => {
+    const snapshot = event.data;
+    if (!snapshot) return;
+
+    const examData = snapshot.data();
+    const title = examData.title || "新しい模試";
+
+    // 1. 送るメッセージの内容設定
+    const message = {
+      notification: {
+        title: "📢 全国統一模試が公開されました！",
+        body: `「${title}」の受付が開始されました。今すぐ実力をチェックしましょう！`,
+      },
+      webpush: {
+        fcmOptions: {
+          link: "/mock-exam", // 通知をタップしたら模試画面へ遷移
+        },
+      },
+    };
+
+    // 2. 全ユーザーのFCMトークンを取得
+    const usersSnap = await admin.firestore().collection("users").get();
+    let tokens: string[] = [];
+
+    usersSnap.forEach((doc) => {
+      const userData = doc.data();
+      // fcmTokens配列を持っているユーザーのトークンを収集
+      if (userData.fcmTokens && Array.isArray(userData.fcmTokens)) {
+        tokens.push(...userData.fcmTokens);
+      }
+    });
+
+    // 重複したトークンを削除
+    tokens = [...new Set(tokens)];
+
+    if (tokens.length === 0) {
+      console.log("送信先トークンがありません。");
+      return;
+    }
+
+    // 3. 一括送信 (最大500件ずつ)
+    try {
+      const response = await admin.messaging().sendEachForMulticast({
+        tokens: tokens,
+        notification: message.notification,
+        webpush: message.webpush,
+      });
+
+      console.log(
+        `通知送信完了: 成功 ${response.successCount} 件 / 失敗 ${response.failureCount} 件`
+      );
+    } catch (error) {
+      console.error("通知送信エラー:", error);
+    }
+  }
+);
+
+// ============================================================
+//  以下、旧コード（Stripe決済機能など） ※念のためコメントアウトで保持
+// ============================================================
+
 // const stripe = require("stripe")(
 //   "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"
 // );
-
-admin.initializeApp();
 
 // // 1. 決済セッションを作成する関数（フロントから呼ばれる）
 // exports.createCheckoutSession = functions.https.onCall(
@@ -7709,6 +7905,127 @@ const correctAnswerLabel = computed(() => {
 </style>
 </file>
 
+<file path="src/router/index.ts">
+import { createRouter, createWebHistory } from "vue-router";
+import { getAuth, onAuthStateChanged, type User } from "firebase/auth";
+import HomeView from "../views/HomeView/HomeView.vue";
+import LoginView from "../views/LoginView/LoginView.vue";
+import VerifyEmailView from "../views/VerifyEmailView/VerifyEmailView.vue";
+import StudyView from "../views/StudyView/StudyView.vue";
+import ReviewView from "../views/ReviewView/ReviewView.vue"; // ★ 復活
+import ResultView from "../views/ResultView/ResultView.vue";
+import AdminView from "../views/AdminView/AdminView.vue";
+import QuestionDetailView from "../views/QuestionDetailView/QuestionDetailView.vue";
+import MockExamView from "../views/MockExamView/MockExamView.vue";
+
+// ★ここにあなたのUIDを設定してください
+const ADMIN_UIDS = ["SyfPBfS5D3VMktj2cEzXCxI1dbv1"];
+
+const router = createRouter({
+  history: createWebHistory(import.meta.env.BASE_URL),
+  routes: [
+    {
+      path: "/",
+      name: "home",
+      component: HomeView,
+      meta: { requiresAuth: true },
+    },
+    {
+      path: "/login",
+      name: "login",
+      component: LoginView,
+      meta: { public: true },
+    },
+    {
+      path: "/verify-email",
+      name: "verify-email",
+      component: VerifyEmailView,
+      meta: { requiresAuth: true },
+    },
+    {
+      path: "/study",
+      name: "study",
+      component: StudyView,
+      meta: { requiresAuth: true },
+    },
+    // ★★★ 復活: 復習モードへのルート ★★★
+    {
+      path: "/review",
+      name: "review",
+      component: ReviewView,
+      meta: { requiresAuth: true },
+    },
+    // ★★★★★★★★★★★★★★★★★★★★★
+    {
+      path: "/mock-exam",
+      name: "mock-exam",
+      component: MockExamView,
+      meta: { requiresAuth: true },
+    },
+    {
+      path: "/result",
+      name: "result",
+      component: ResultView,
+      meta: { requiresAuth: true },
+    },
+    {
+      path: "/admin",
+      name: "admin",
+      component: AdminView,
+      meta: { requiresAuth: true, requiresAdmin: true },
+    },
+    {
+      path: "/question/:id",
+      name: "question-detail",
+      component: QuestionDetailView,
+      meta: { requiresAuth: true },
+    },
+  ],
+});
+
+router.beforeEach(async (to, from, next) => {
+  const auth = getAuth();
+  const currentUser = await new Promise<User | null>((resolve) => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      unsubscribe();
+      resolve(user);
+    });
+  });
+
+  const requiresAuth = to.matched.some((record) => record.meta.requiresAuth);
+  const requiresAdmin = to.matched.some((record) => record.meta.requiresAdmin);
+
+  if (requiresAuth && !currentUser) {
+    next("/login");
+  } else if (
+    currentUser &&
+    !currentUser.emailVerified &&
+    to.name !== "verify-email"
+  ) {
+    next("/verify-email");
+  } else if (
+    currentUser &&
+    currentUser.emailVerified &&
+    to.name === "verify-email"
+  ) {
+    next("/");
+  } else if (to.path === "/login" && currentUser && currentUser.emailVerified) {
+    next("/");
+  } else if (
+    requiresAdmin &&
+    currentUser &&
+    !ADMIN_UIDS.includes(currentUser.uid)
+  ) {
+    alert("⛔️ アクセス権限がありません");
+    next("/");
+  } else {
+    next();
+  }
+});
+
+export default router;
+</file>
+
 <file path="src/views/HomeView/HomeView.vue">
 <template>
   <div class="h-screen flex flex-col bg-slate-50 font-sans">
@@ -7946,8 +8263,6 @@ const correctAnswerLabel = computed(() => {
                   </div>
                 </div>
               </section>
-
-              <JsonUploader />
             </div>
           </template>
         </div>
@@ -8041,7 +8356,7 @@ const correctAnswerLabel = computed(() => {
 import { ref, onMounted, computed } from "vue";
 import { useRouter } from "vue-router";
 import { useNextNs } from "@/composables/useNextNs";
-import JsonUploader from "@/components/JsonUploader.vue";
+import { useNotifications } from "@/composables/useNotifications"; // ★ 追加
 import TheBottomNav from "@/components/TheBottomNav/TheBottomNav.vue";
 import MyPage from "@/components/MyPage/MyPage.vue";
 import SettingsTab from "@/components/SettingsTab/SettingsTab.vue";
@@ -8066,6 +8381,8 @@ const {
   cleanupDuplicates,
 } = useNextNs();
 
+const { requestNotificationPermission } = useNotifications(); // ★ 通知機能
+
 const currentTab = ref("home");
 
 // ★★★ ここにあなたのUIDを設定してください ★★★
@@ -8075,8 +8392,10 @@ const isAdmin = computed(() => {
   return currentUser.value && ADMIN_UIDS.includes(currentUser.value.uid);
 });
 
-onMounted(() => {
-  fetchAllQuestions();
+onMounted(async () => {
+  await fetchAllQuestions();
+  // ★ ホーム画面表示時に通知許可を求める
+  requestNotificationPermission();
 });
 
 const startStudy = async (options: {
@@ -8134,141 +8453,20 @@ const startStudy = async (options: {
 </style>
 </file>
 
-<file path="src/router/index.ts">
-import { createRouter, createWebHistory } from "vue-router";
-import { getAuth, onAuthStateChanged, type User } from "firebase/auth";
-import HomeView from "../views/HomeView/HomeView.vue";
-import LoginView from "../views/LoginView/LoginView.vue";
-import VerifyEmailView from "../views/VerifyEmailView/VerifyEmailView.vue";
-import StudyView from "../views/StudyView/StudyView.vue";
-import ReviewView from "../views/ReviewView/ReviewView.vue"; // ★ 復活
-import ResultView from "../views/ResultView/ResultView.vue";
-import AdminView from "../views/AdminView/AdminView.vue";
-import QuestionDetailView from "../views/QuestionDetailView/QuestionDetailView.vue";
-import MockExamView from "../views/MockExamView/MockExamView.vue";
-
-// ★ここにあなたのUIDを設定してください
-const ADMIN_UIDS = ["SyfPBfS5D3VMktj2cEzXCxI1dbv1"];
-
-const router = createRouter({
-  history: createWebHistory(import.meta.env.BASE_URL),
-  routes: [
-    {
-      path: "/",
-      name: "home",
-      component: HomeView,
-      meta: { requiresAuth: true },
-    },
-    {
-      path: "/login",
-      name: "login",
-      component: LoginView,
-      meta: { public: true },
-    },
-    {
-      path: "/verify-email",
-      name: "verify-email",
-      component: VerifyEmailView,
-      meta: { requiresAuth: true },
-    },
-    {
-      path: "/study",
-      name: "study",
-      component: StudyView,
-      meta: { requiresAuth: true },
-    },
-    // ★★★ 復活: 復習モードへのルート ★★★
-    {
-      path: "/review",
-      name: "review",
-      component: ReviewView,
-      meta: { requiresAuth: true },
-    },
-    // ★★★★★★★★★★★★★★★★★★★★★
-    {
-      path: "/mock-exam",
-      name: "mock-exam",
-      component: MockExamView,
-      meta: { requiresAuth: true },
-    },
-    {
-      path: "/result",
-      name: "result",
-      component: ResultView,
-      meta: { requiresAuth: true },
-    },
-    {
-      path: "/admin",
-      name: "admin",
-      component: AdminView,
-      meta: { requiresAuth: true, requiresAdmin: true },
-    },
-    {
-      path: "/question/:id",
-      name: "question-detail",
-      component: QuestionDetailView,
-      meta: { requiresAuth: true },
-    },
-  ],
-});
-
-router.beforeEach(async (to, from, next) => {
-  const auth = getAuth();
-  const currentUser = await new Promise<User | null>((resolve) => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      unsubscribe();
-      resolve(user);
-    });
-  });
-
-  const requiresAuth = to.matched.some((record) => record.meta.requiresAuth);
-  const requiresAdmin = to.matched.some((record) => record.meta.requiresAdmin);
-
-  if (requiresAuth && !currentUser) {
-    next("/login");
-  } else if (
-    currentUser &&
-    !currentUser.emailVerified &&
-    to.name !== "verify-email"
-  ) {
-    next("/verify-email");
-  } else if (
-    currentUser &&
-    currentUser.emailVerified &&
-    to.name === "verify-email"
-  ) {
-    next("/");
-  } else if (to.path === "/login" && currentUser && currentUser.emailVerified) {
-    next("/");
-  } else if (
-    requiresAdmin &&
-    currentUser &&
-    !ADMIN_UIDS.includes(currentUser.uid)
-  ) {
-    alert("⛔️ アクセス権限がありません");
-    next("/");
-  } else {
-    next();
-  }
-});
-
-export default router;
-</file>
-
 <file path=".firebase/hosting.ZGlzdA.cache">
-sw.js,1767792903761,1fc9f637bac635388d5f4d55c718c78566dd066b846a2f8e64e3b40f61e715bc
-workbox-8c29f6e4.js,1767792903761,c1360d97831a7585ba8f5c2631c0b3b78258637b50e1329c8f7fc0837604e59a
-manifest.webmanifest,1767792903080,e23c66a17eae9a20ef9043e61f89a8261cc0022c603416c0dee217ad5189f7e6
-registerSW.js,1767792903080,5b6445b5215737c53ef0d379c151d57de165a056de2d1c5812ed614f158ebcbd
-index.html,1767792903080,9cffa2be16204dd353a68bcbef5dbd6260435964ae534088147f140ed798a2fb
-firebase-messaging-sw.js,1767792902930,8d8cf84c873b19b20b1328e697daeb3ef8d264cfe3e53683cd4da02a30ee90b1
-pwa-512x512.png,1767792902932,121b31ad4cdaa0c40de36dfa9392079ab01285a12f2c6db18bfc5b935cefa843
-presentation.html,1767792902931,ae3b4772b21fdc1fc26348c7df9444275707a36e81107e5ccf9737ca72ec523d
-pwa-192x192.png,1767792902931,121b31ad4cdaa0c40de36dfa9392079ab01285a12f2c6db18bfc5b935cefa843
-apple-touch-icon.png,1767792902930,121b31ad4cdaa0c40de36dfa9392079ab01285a12f2c6db18bfc5b935cefa843
-logo.png,1767792902931,121b31ad4cdaa0c40de36dfa9392079ab01285a12f2c6db18bfc5b935cefa843
-assets/index-Ch0hwG5A.css,1767792903080,7608b21608ce171d6113761199aee129b9a8b9f99eb203843a6215296296a976
-assets/index-Ym73WjbS.js,1767792903080,a398428b39cdcb287f5272b49540cb0ad92d0c48ada04249abdb328f83c3a267
+registerSW.js,1767795128901,5b6445b5215737c53ef0d379c151d57de165a056de2d1c5812ed614f158ebcbd
+sw.js,1767795129530,62e9f91b488ca1280f1c00d93ae85ba8e2ce4769cd1b059f8200e11320a216e4
+manifest.webmanifest,1767795128901,e23c66a17eae9a20ef9043e61f89a8261cc0022c603416c0dee217ad5189f7e6
+workbox-8c29f6e4.js,1767795129531,c1360d97831a7585ba8f5c2631c0b3b78258637b50e1329c8f7fc0837604e59a
+index.html,1767795128901,00a6bedd5422c3ddabc2bc51a79cab07bb86fd8cb272826602b243d2db95e2a0
+firebase-messaging-sw.js,1767795128759,8d8cf84c873b19b20b1328e697daeb3ef8d264cfe3e53683cd4da02a30ee90b1
+pwa-192x192.png,1767795128760,121b31ad4cdaa0c40de36dfa9392079ab01285a12f2c6db18bfc5b935cefa843
+assets/index-CKqOqDNh.css,1767795128901,48b122a41491829da3f72f5b081a305abf890a82a93f585b369ae46bb178d42c
+logo.png,1767795128759,121b31ad4cdaa0c40de36dfa9392079ab01285a12f2c6db18bfc5b935cefa843
+presentation.html,1767795128759,ae3b4772b21fdc1fc26348c7df9444275707a36e81107e5ccf9737ca72ec523d
+pwa-512x512.png,1767795128760,121b31ad4cdaa0c40de36dfa9392079ab01285a12f2c6db18bfc5b935cefa843
+apple-touch-icon.png,1767795128759,121b31ad4cdaa0c40de36dfa9392079ab01285a12f2c6db18bfc5b935cefa843
+assets/index-BRzf2GEr.js,1767795128901,87f1f5fb7cf3d074666c0a961e0bb3cbf28911bc757d4426110389d4275c8ca3
 </file>
 
 </files>

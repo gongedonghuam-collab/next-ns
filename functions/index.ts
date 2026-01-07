@@ -1,10 +1,84 @@
-const functions = require("firebase-functions");
-const admin = require("firebase-admin");
+import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import { setGlobalOptions } from "firebase-functions/v2"; // ★追加
+import * as admin from "firebase-admin";
+
+// 旧コードの互換性のために残す（必要なら import * as functions from "firebase-functions"; に書き換えて使用）
+// const functions = require("firebase-functions");
+
+// ★追加: サーバーの場所を東京に設定
+setGlobalOptions({ region: "asia-northeast1" });
+
+admin.initializeApp();
+
+/**
+ * ★新機能: 模試が作成されたときに、全ユーザーへプッシュ通知を送信する関数
+ */
+export const notifyOnMockExamCreated = onDocumentCreated(
+  "mock_exams/{examId}",
+  async (event) => {
+    const snapshot = event.data;
+    if (!snapshot) return;
+
+    const examData = snapshot.data();
+    const title = examData.title || "新しい模試";
+
+    // 1. 送るメッセージの内容設定
+    const message = {
+      notification: {
+        title: "📢 全国統一模試が公開されました！",
+        body: `「${title}」の受付が開始されました。今すぐ実力をチェックしましょう！`,
+      },
+      webpush: {
+        fcmOptions: {
+          link: "/mock-exam", // 通知をタップしたら模試画面へ遷移
+        },
+      },
+    };
+
+    // 2. 全ユーザーのFCMトークンを取得
+    const usersSnap = await admin.firestore().collection("users").get();
+    let tokens: string[] = [];
+
+    usersSnap.forEach((doc) => {
+      const userData = doc.data();
+      // fcmTokens配列を持っているユーザーのトークンを収集
+      if (userData.fcmTokens && Array.isArray(userData.fcmTokens)) {
+        tokens.push(...userData.fcmTokens);
+      }
+    });
+
+    // 重複したトークンを削除
+    tokens = [...new Set(tokens)];
+
+    if (tokens.length === 0) {
+      console.log("送信先トークンがありません。");
+      return;
+    }
+
+    // 3. 一括送信 (最大500件ずつ)
+    try {
+      const response = await admin.messaging().sendEachForMulticast({
+        tokens: tokens,
+        notification: message.notification,
+        webpush: message.webpush,
+      });
+
+      console.log(
+        `通知送信完了: 成功 ${response.successCount} 件 / 失敗 ${response.failureCount} 件`
+      );
+    } catch (error) {
+      console.error("通知送信エラー:", error);
+    }
+  }
+);
+
+// ============================================================
+//  以下、旧コード（Stripe決済機能など） ※念のためコメントアウトで保持
+// ============================================================
+
 // const stripe = require("stripe")(
 //   "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"
 // );
-
-admin.initializeApp();
 
 // // 1. 決済セッションを作成する関数（フロントから呼ばれる）
 // exports.createCheckoutSession = functions.https.onCall(

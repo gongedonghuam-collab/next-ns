@@ -18,7 +18,8 @@ const isDropdownOpen = ref(false);
 const STORAGE_KEY = "hairlink_notifications";
 
 // ★重要: Firebaseコンソールで取得したVAPIDキーを入れてください
-const VAPID_KEY = "YOUR_VAPID_KEY_HERE";
+const VAPID_KEY =
+  "BDc2GU2MYvtgOjzdx5cnFjp9xeAQ2DhkrmtF6w3MVzkKzb0DTJmtJCrSOiKs0J90vXZ6glr-5Wl2jHJGmETBSc8";
 
 export function useNotifications() {
   // 履歴をローカルストレージから読み込む

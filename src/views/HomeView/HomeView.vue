@@ -327,6 +327,8 @@
 import { ref, onMounted, computed } from "vue";
 import { useRouter } from "vue-router";
 import { useNextNs } from "@/composables/useNextNs";
+import { useNotifications } from "@/composables/useNotifications";
+// JsonUploader の import は削除しました
 import TheBottomNav from "@/components/TheBottomNav/TheBottomNav.vue";
 import MyPage from "@/components/MyPage/MyPage.vue";
 import SettingsTab from "@/components/SettingsTab/SettingsTab.vue";
@@ -351,6 +353,8 @@ const {
   cleanupDuplicates,
 } = useNextNs();
 
+const { requestNotificationPermission } = useNotifications();
+
 const currentTab = ref("home");
 
 // ★★★ ここにあなたのUIDを設定してください ★★★
@@ -360,8 +364,10 @@ const isAdmin = computed(() => {
   return currentUser.value && ADMIN_UIDS.includes(currentUser.value.uid);
 });
 
-onMounted(() => {
-  fetchAllQuestions();
+onMounted(async () => {
+  await fetchAllQuestions();
+  // ★ ホーム画面表示時に通知許可を求める
+  requestNotificationPermission();
 });
 
 const startStudy = async (options: {
