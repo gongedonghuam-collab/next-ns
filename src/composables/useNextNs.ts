@@ -20,9 +20,12 @@ import { onAuthStateChanged, signOut } from "firebase/auth";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import type { Question, User, StudyLog } from "@/types";
 
+// 保存キーの定義
 const STORAGE_KEY_SESSION = "nextns_session_questions";
 const STORAGE_KEY_INDEX = "nextns_session_index";
 const STORAGE_KEY_PERIOD = "nextns_session_period";
+const STORAGE_KEY_MODE = "nextns_session_mode"; // ★追加
+const STORAGE_KEY_YEAR = "nextns_session_year"; // ★追加
 
 // --- グローバルステート ---
 const currentUser = ref<User | null>(null);
@@ -36,6 +39,10 @@ const loading = ref(false);
 
 const currentSessionIndex = ref(0);
 const selectedPeriod = ref<"all" | "am" | "pm">("all");
+
+// ★追加: 現在のセッション設定を保持するステート
+const sessionMode = ref<"random100" | "examYear" | null>(null);
+const sessionYear = ref<string | null>(null);
 
 // 結果画面用ステート
 const sessionResult = ref<{
@@ -126,6 +133,7 @@ export function useNextNs() {
   const aiResponse = ref("");
   const isAiThinking = ref(false);
 
+  // ★修正: モードと年度も保存する
   const saveSession = () => {
     if (questions.value.length > 0) {
       localStorage.setItem(
@@ -137,18 +145,26 @@ export function useNextNs() {
         String(currentSessionIndex.value)
       );
       localStorage.setItem(STORAGE_KEY_PERIOD, selectedPeriod.value);
+      localStorage.setItem(STORAGE_KEY_MODE, sessionMode.value || "");
+      localStorage.setItem(STORAGE_KEY_YEAR, sessionYear.value || "");
     }
   };
 
+  // ★修正: モードと年度も復元する
   const restoreSession = () => {
     const saved = localStorage.getItem(STORAGE_KEY_SESSION);
     const idx = localStorage.getItem(STORAGE_KEY_INDEX);
     const prd = localStorage.getItem(STORAGE_KEY_PERIOD);
+    const mode = localStorage.getItem(STORAGE_KEY_MODE);
+    const year = localStorage.getItem(STORAGE_KEY_YEAR);
+
     if (saved && idx) {
       try {
         questions.value = JSON.parse(saved);
         currentSessionIndex.value = parseInt(idx, 10);
         if (prd) selectedPeriod.value = prd as any;
+        if (mode) sessionMode.value = mode as any;
+        if (year) sessionYear.value = year;
         return true;
       } catch (e) {
         return false;
@@ -157,11 +173,16 @@ export function useNextNs() {
     return false;
   };
 
+  // ★修正: 完全に消去する
   const clearSession = () => {
     localStorage.removeItem(STORAGE_KEY_SESSION);
     localStorage.removeItem(STORAGE_KEY_INDEX);
     localStorage.removeItem(STORAGE_KEY_PERIOD);
+    localStorage.removeItem(STORAGE_KEY_MODE);
+    localStorage.removeItem(STORAGE_KEY_YEAR);
     currentSessionIndex.value = 0;
+    sessionMode.value = null;
+    sessionYear.value = null;
   };
 
   const fetchAllQuestions = async () => {
@@ -336,18 +357,15 @@ export function useNextNs() {
     }
     if (!currentUser.value) return false;
 
-    // 既に回答があれば表示
     if (q.lastResult?.aiAdvice) {
       aiResponse.value = q.lastResult.aiAdvice;
       return true;
     }
 
-    // 思考中フラグON
     isAiThinking.value = true;
     aiResponse.value = "";
 
     try {
-      // --- モデルリスト取得ロジック ---
       const listUrl = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`;
       const listResponse = await fetch(listUrl);
       const listData = await listResponse.json();
@@ -361,7 +379,6 @@ export function useNextNs() {
         "models/",
         ""
       );
-      // ------------------------------------------------
 
       const genAI = new GoogleGenerativeAI(apiKey);
       const model = genAI.getGenerativeModel({ model: targetModel });
@@ -375,7 +392,6 @@ export function useNextNs() {
       const res = await model.generateContent(prompt);
       const text = res.response.text();
 
-      // ★★★ 思考完了・タイプライター演出開始 ★★★
       isAiThinking.value = false;
 
       const chars = text.split("");
@@ -425,6 +441,7 @@ export function useNextNs() {
     }
   };
 
+  // ★修正: リセット時などにモードや年度が空にならないよう補完
   const fetchQuestions = async (
     options: {
       force?: boolean;
@@ -434,25 +451,31 @@ export function useNextNs() {
     } = {}
   ) => {
     if (!options.force && restoreSession()) return;
+
     loading.value = true;
     try {
       await fetchAllQuestions();
       let list = [...masterQuestions.value];
 
-      if (options.mode === "examYear" && options.year) {
-        list = list.filter((q) => q.examYear === options.year);
+      // 引数で指定があればそれを優先し、なければ保存されたセッション設定を使用
+      const activeMode = options.mode || sessionMode.value;
+      const activeYear = options.year || sessionYear.value;
+      const activePeriod = options.period || selectedPeriod.value;
+
+      // --- フィルタリング処理 ---
+      if (activeMode === "examYear" && activeYear) {
+        list = list.filter((q) => q.examYear === activeYear);
       }
 
-      const activePeriod = options.period || selectedPeriod.value;
       if (activePeriod === "am")
         list = list.filter((q) => q.questionNumber?.includes("午前"));
       else if (activePeriod === "pm")
         list = list.filter((q) => q.questionNumber?.includes("午後"));
 
-      if (options.mode === "random100") {
+      if (activeMode === "random100") {
         list.sort(() => Math.random() - 0.5);
         list = list.slice(0, 100);
-      } else if (options.mode === "examYear") {
+      } else if (activeMode === "examYear") {
         list.sort((a, b) =>
           a.questionNumber.localeCompare(b.questionNumber, undefined, {
             numeric: true,
@@ -462,8 +485,16 @@ export function useNextNs() {
         list.sort(() => Math.random() - 0.5);
       }
 
+      // --- 状態の更新と保存 ---
       questions.value = list;
-      currentSessionIndex.value = 0;
+      // force=true(新規開始)ならインデックス0、そうでなければ維持
+      if (options.force) {
+        currentSessionIndex.value = 0;
+        // 新しい設定を保存
+        sessionMode.value = activeMode || null;
+        sessionYear.value = activeYear || null;
+      }
+
       saveSession();
     } finally {
       loading.value = false;
@@ -548,6 +579,8 @@ export function useNextNs() {
     sessionResult,
     rankingList,
     lastLogId,
+    sessionMode, // ★公開
+    sessionYear, // ★公開
     initAuth: () =>
       onAuthStateChanged(auth, async (user) => {
         if (user) {
@@ -563,7 +596,7 @@ export function useNextNs() {
               photoURL: userData.photoURL,
               totalExp: userData.totalExp || 0,
               lastActiveAt: userData.lastActiveAt,
-              isPremium: true, // 常にプレミアムとして扱う（UI調整用）
+              isPremium: true,
               aiUsage: { count: 0, lastUsedAt: null },
             } as User;
           } else {

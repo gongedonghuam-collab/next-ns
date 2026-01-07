@@ -9,15 +9,14 @@ const {
   questions,
   loading,
   fetchQuestions,
-  selectedPeriod,
   currentSessionIndex,
   saveAnswer,
-  clearSession,
   goToNext,
-  finishSession, // ★ 追加
+  finishSession,
 } = useNextNs();
 
 onMounted(async () => {
+  // 保存されたセッションがあれば復元、なければよしなにロード
   await fetchQuestions({});
 });
 
@@ -34,21 +33,12 @@ const handleAnswer = async (
   await saveAnswer(currentQuestion.value, choiceIndex, isCorrect, confidence);
 };
 
-// ★ 修正: 最後の問題なら集計してリザルトへ
 const handleNext = () => {
   if (currentSessionIndex.value < questions.value.length - 1) {
     goToNext();
   } else {
-    finishSession(); // 集計実行
-    router.push("/result"); // 画面遷移
-  }
-};
-
-const resetAndFetch = async (mode: "all" | "am" | "pm") => {
-  if (confirm("現在の進捗をリセットして、新しく問題を読み込みますか？")) {
-    clearSession();
-    selectedPeriod.value = mode;
-    await fetchQuestions({ force: true });
+    finishSession();
+    router.push("/result");
   }
 };
 
@@ -77,35 +67,10 @@ const isAnsweredLocally = (q: any) => {
           今回: {{ currentSessionIndex + 1 }} / {{ questions.length }}問目
         </span>
       </div>
-      <button
-        @click="resetAndFetch(selectedPeriod)"
-        class="text-blue-500 text-[10px] font-black border border-blue-100 px-2 py-1 rounded-lg bg-blue-50 transition active:scale-95"
-      >
-        リセット
-      </button>
+      <div class="w-10"></div>
     </header>
 
     <main class="max-w-md mx-auto px-6 pt-6">
-      <div class="flex gap-2 mb-6 bg-slate-200/50 p-1 rounded-2xl">
-        <button
-          v-for="m in [
-            { id: 'all', n: '全件' },
-            { id: 'am', n: '午前のみ' },
-            { id: 'pm', n: '午後のみ' },
-          ]"
-          :key="m.id"
-          @click="resetAndFetch(m.id as any)"
-          class="flex-1 py-2 text-xs font-bold rounded-xl transition-all"
-          :class="
-            selectedPeriod === m.id
-              ? 'bg-white text-blue-600 shadow-sm'
-              : 'text-slate-500'
-          "
-        >
-          {{ m.n }}
-        </button>
-      </div>
-
       <div
         v-if="loading"
         class="py-20 text-center text-slate-400 font-bold animate-pulse"

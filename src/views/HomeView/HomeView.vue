@@ -22,6 +22,25 @@
           v-if="currentTab === 'home'"
           class="space-y-8 px-6 animate-fade-in"
         >
+          <div v-if="hasResumeData" class="animate-fade-in">
+            <button
+              @click="$router.push('/study')"
+              class="w-full bg-slate-800 text-white p-4 rounded-3xl shadow-lg flex items-center justify-between group active:scale-95 transition"
+            >
+              <div class="text-left">
+                <p
+                  class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-1"
+                >
+                  RESUME
+                </p>
+                <p class="font-bold">前回の続きから再開する</p>
+              </div>
+              <span class="text-2xl group-hover:translate-x-1 transition"
+                >▶</span
+              >
+            </button>
+          </div>
+
           <div
             class="bg-blue-600 rounded-[32px] p-6 text-white shadow-xl shadow-blue-200"
           >
@@ -370,6 +389,7 @@ const {
 const { requestNotificationPermission } = useNotifications();
 
 const currentTab = ref("home");
+const hasResumeData = ref(false); // ★ 追加
 
 // ★★★ ここにあなたのUIDを設定してください ★★★
 const ADMIN_UIDS = ["SyfPBfS5D3VMktj2cEzXCxI1dbv1"];
@@ -380,8 +400,16 @@ const isAdmin = computed(() => {
 
 onMounted(async () => {
   await fetchAllQuestions();
-  // ★ ホーム画面表示時に通知許可を求める
   requestNotificationPermission();
+
+  // ★追加: 前回のデータがあるかチェック
+  const saved = localStorage.getItem("nextns_session_questions");
+  if (saved) {
+    try {
+      const parsed = JSON.parse(saved);
+      if (parsed.length > 0) hasResumeData.value = true;
+    } catch {}
+  }
 });
 
 const startStudy = async (options: {
