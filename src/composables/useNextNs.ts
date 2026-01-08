@@ -24,8 +24,8 @@ import type { Question, User, StudyLog } from "@/types";
 const STORAGE_KEY_SESSION = "nextns_session_questions";
 const STORAGE_KEY_INDEX = "nextns_session_index";
 const STORAGE_KEY_PERIOD = "nextns_session_period";
-const STORAGE_KEY_MODE = "nextns_session_mode"; // ★追加
-const STORAGE_KEY_YEAR = "nextns_session_year"; // ★追加
+const STORAGE_KEY_MODE = "nextns_session_mode";
+const STORAGE_KEY_YEAR = "nextns_session_year";
 
 // --- グローバルステート ---
 const currentUser = ref<User | null>(null);
@@ -40,11 +40,9 @@ const loading = ref(false);
 const currentSessionIndex = ref(0);
 const selectedPeriod = ref<"all" | "am" | "pm">("all");
 
-// ★追加: 現在のセッション設定を保持するステート
 const sessionMode = ref<"random100" | "examYear" | null>(null);
 const sessionYear = ref<string | null>(null);
 
-// 結果画面用ステート
 const sessionResult = ref<{
   correct: number;
   total: number;
@@ -53,33 +51,43 @@ const sessionResult = ref<{
   judgeText: string;
 } | null>(null);
 
-// ランキングデータ
 const rankingList = ref<User[]>([]);
-
-// 最新の学習ログID（AI解説保存用）
 const lastLogId = ref<string | null>(null);
 
-// ログから算出する一時的な経験値（表示用）
+// ログから算出する一時的な経験値
 const totalExp = computed(() =>
-  studyLogs.value.reduce((t, log) => t + (log.isCorrect ? 20 : 5), 0)
+  // ★修正: 正解(20pt)のみ加算し、不正解は0ptにする
+  studyLogs.value.reduce((t, log) => t + (log.isCorrect ? 20 : 0), 0)
 );
 
+// レベル計算 (100ptで1レベルアップ)
 const currentLevel = computed(() => {
   const exp = currentUser.value?.totalExp || totalExp.value;
-  return Math.floor(exp / 100) + 1;
+  const lv = Math.floor(exp / 100) + 1;
+  return lv > 100 ? 100 : lv; // 上限100
 });
 
+// 次のレベルまでの進捗 (0-99)
 const levelProgress = computed(() => {
   const exp = currentUser.value?.totalExp || totalExp.value;
+  if (currentLevel.value >= 100) return 100;
   return exp % 100;
 });
 
+// ★修正: 10レベルごとに変化する称号ロジック
 const currentRank = computed(() => {
   const lv = currentLevel.value;
-  if (lv < 5) return "新人ナースの卵";
-  if (lv < 10) return "駆け出しナース";
-  if (lv < 20) return "中堅ナース";
-  return "ベテランナース";
+  if (lv >= 100) return "ナイチンゲール 🕊️";
+  if (lv >= 90) return "専門看護師 🏆";
+  if (lv >= 80) return "認定看護師 🏅";
+  if (lv >= 70) return "看護部長 🏰";
+  if (lv >= 60) return "看護師長 🌸";
+  if (lv >= 50) return "チーフリーダー 👑";
+  if (lv >= 40) return "ベテランナース 🏥";
+  if (lv >= 30) return "中堅ナース 💉";
+  if (lv >= 20) return "一人前ナース ✨";
+  if (lv >= 10) return "見習いナース 🔰";
+  return "看護学生の卵 🥚";
 });
 
 const questionStats = computed(() => {
@@ -133,7 +141,6 @@ export function useNextNs() {
   const aiResponse = ref("");
   const isAiThinking = ref(false);
 
-  // ★修正: モードと年度も保存する
   const saveSession = () => {
     if (questions.value.length > 0) {
       localStorage.setItem(
@@ -150,7 +157,6 @@ export function useNextNs() {
     }
   };
 
-  // ★修正: モードと年度も復元する
   const restoreSession = () => {
     const saved = localStorage.getItem(STORAGE_KEY_SESSION);
     const idx = localStorage.getItem(STORAGE_KEY_INDEX);
@@ -173,7 +179,6 @@ export function useNextNs() {
     return false;
   };
 
-  // ★修正: 完全に消去する
   const clearSession = () => {
     localStorage.removeItem(STORAGE_KEY_SESSION);
     localStorage.removeItem(STORAGE_KEY_INDEX);
@@ -300,7 +305,9 @@ export function useNextNs() {
     q.lastResult = { isCorrect, confidence, userChoice: [choice] };
     saveSession();
 
-    const expGained = isCorrect ? 20 : 5;
+    // ★修正: 正解なら20pt、不正解なら0pt
+    const expGained = isCorrect ? 20 : 0;
+
     const logRef = await addDoc(collection(db, "study_logs"), {
       userId: uid,
       questionId: q.id,
@@ -309,28 +316,33 @@ export function useNextNs() {
       isCorrect,
       confidence,
       createdAt: serverTimestamp(),
+      mode: sessionMode.value || "unknown",
+      targetYear: sessionYear.value || null,
     });
 
     lastLogId.value = logRef.id;
 
     try {
       const userRef = doc(db, "users", uid);
-      await setDoc(
-        userRef,
-        {
-          email: currentUser.value?.email,
-          totalExp: increment(expGained),
-          lastActiveAt: serverTimestamp(),
-          displayName: currentUser.value?.displayName || null,
-          photoURL: currentUser.value?.photoURL || null,
-          role: currentUser.value?.role || "student",
-        },
-        { merge: true }
-      );
+      // ポイント加算処理
+      if (expGained > 0) {
+        await setDoc(
+          userRef,
+          {
+            email: currentUser.value?.email,
+            totalExp: increment(expGained),
+            lastActiveAt: serverTimestamp(),
+            displayName: currentUser.value?.displayName || null,
+            photoURL: currentUser.value?.photoURL || null,
+            role: currentUser.value?.role || "student",
+          },
+          { merge: true }
+        );
 
-      if (currentUser.value) {
-        currentUser.value.totalExp =
-          (currentUser.value.totalExp || 0) + expGained;
+        if (currentUser.value) {
+          currentUser.value.totalExp =
+            (currentUser.value.totalExp || 0) + expGained;
+        }
       }
     } catch (e) {
       console.error("Exp update failed", e);
@@ -348,7 +360,6 @@ export function useNextNs() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  // ★★★ AI解説リクエスト（完全無料・無制限版） ★★★
   const askAI = async (q: Question): Promise<boolean> => {
     const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
     if (!apiKey) {
@@ -441,7 +452,6 @@ export function useNextNs() {
     }
   };
 
-  // ★修正: リセット時などにモードや年度が空にならないよう補完
   const fetchQuestions = async (
     options: {
       force?: boolean;
@@ -457,12 +467,10 @@ export function useNextNs() {
       await fetchAllQuestions();
       let list = [...masterQuestions.value];
 
-      // 引数で指定があればそれを優先し、なければ保存されたセッション設定を使用
       const activeMode = options.mode || sessionMode.value;
       const activeYear = options.year || sessionYear.value;
       const activePeriod = options.period || selectedPeriod.value;
 
-      // --- フィルタリング処理 ---
       if (activeMode === "examYear" && activeYear) {
         list = list.filter((q) => q.examYear === activeYear);
       }
@@ -485,12 +493,9 @@ export function useNextNs() {
         list.sort(() => Math.random() - 0.5);
       }
 
-      // --- 状態の更新と保存 ---
       questions.value = list;
-      // force=true(新規開始)ならインデックス0、そうでなければ維持
       if (options.force) {
         currentSessionIndex.value = 0;
-        // 新しい設定を保存
         sessionMode.value = activeMode || null;
         sessionYear.value = activeYear || null;
       }
@@ -579,8 +584,8 @@ export function useNextNs() {
     sessionResult,
     rankingList,
     lastLogId,
-    sessionMode, // ★公開
-    sessionYear, // ★公開
+    sessionMode,
+    sessionYear,
     initAuth: () =>
       onAuthStateChanged(auth, async (user) => {
         if (user) {

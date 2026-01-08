@@ -27,7 +27,6 @@ export interface User {
   createdAt: any;
   totalExp?: number;
   lastActiveAt?: any;
-  // ★ ここが追加された重要な部分です
   isPremium?: boolean;
   aiUsage?: {
     count: number; // 今日の使用回数
@@ -45,4 +44,7 @@ export interface StudyLog {
   confidence?: "ok" | "so-so" | "ng";
   createdAt: any;
   aiAdvice?: string; // AIのアドバイス履歴用
+  // ★★★ 追加部分 ★★★
+  mode?: string; // "random100" | "examYear" など
+  targetYear?: string | null; // "第113回" など
 }

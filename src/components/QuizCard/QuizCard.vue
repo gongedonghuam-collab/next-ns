@@ -1,20 +1,18 @@
 <script setup lang="ts">
-import { ref, watch, computed } from "vue";
+import { ref, watch, computed, onMounted } from "vue";
 import type { Question } from "@/types";
 import { useNextNs } from "@/composables/useNextNs";
 import { useRouter } from "vue-router";
 
 const router = useRouter();
-const {
-  askAI,
-  aiResponse,
-  isAiThinking,
-  toggleBookmark,
-  bookmarkedIds,
-  currentUser,
-} = useNextNs();
+const { askAI, aiResponse, isAiThinking, toggleBookmark, bookmarkedIds } =
+  useNextNs();
 
-const props = defineProps<{ question: Question; index: number }>();
+const props = defineProps<{
+  question: Question;
+  index: number;
+  isReviewMode?: boolean;
+}>();
 
 const emit = defineEmits<{
   (
@@ -30,11 +28,22 @@ const isAnswered = ref(false);
 const showAiComment = ref(false);
 const showPopup = ref<"correct" | "incorrect" | null>(null);
 
+onMounted(() => {
+  if (props.isReviewMode) {
+    isAnswered.value = true;
+  }
+});
+
 watch(
   () => props.question.id,
   () => {
-    selectedIndex.value = null;
-    isAnswered.value = false;
+    if (props.isReviewMode) {
+      isAnswered.value = true;
+      selectedIndex.value = null;
+    } else {
+      selectedIndex.value = null;
+      isAnswered.value = false;
+    }
     showAiComment.value = false;
     showPopup.value = null;
   },
@@ -57,11 +66,8 @@ const submitWithConfidence = (confidence: "ok" | "so-so" | "ng") => {
   }, 1200);
 };
 
-// ★ AI解説ボタンの処理（単純化）
 const handleAskAi = async () => {
-  // 解説エリアを表示
   showAiComment.value = true;
-  // AI問い合わせ開始
   await askAI(props.question);
 };
 
@@ -100,23 +106,28 @@ const correctAnswerLabel = computed(() => {
 
     <button
       @click="toggleBookmark(question)"
-      class="absolute top-6 right-6 text-2xl transition active:scale-90"
+      class="absolute top-6 right-6 text-2xl transition active:scale-90 z-10"
     >
       {{ bookmarkedIds.has(question.id) ? "🔖" : "📑" }}
     </button>
 
-    <div class="flex justify-between items-center mb-6 pr-8">
-      <span
-        class="text-[10px] font-bold bg-slate-100 text-slate-500 px-3 py-1 rounded-full uppercase tracking-widest"
-        >{{ question.examYear }}</span
-      >
-      <div class="flex gap-1">
+    <div class="mb-6 pr-8">
+      <div class="mb-3">
+        <span
+          class="text-[10px] font-bold bg-slate-100 text-slate-500 px-3 py-1 rounded-full uppercase tracking-widest inline-block"
+        >
+          {{ question.examYear }}
+        </span>
+      </div>
+
+      <div class="flex flex-wrap gap-2">
         <span
           v-for="tag in question.tags"
           :key="tag"
-          class="text-[10px] text-blue-500 font-bold bg-blue-50 px-2.5 py-1 rounded-full"
-          >#{{ tag }}</span
+          class="text-[10px] text-blue-600 font-bold bg-blue-50 px-2.5 py-1 rounded-md border border-blue-100 whitespace-nowrap"
         >
+          #{{ tag }}
+        </span>
       </div>
     </div>
 
@@ -314,12 +325,11 @@ const correctAnswerLabel = computed(() => {
   }
 }
 
-/* ★★★ 追加：ぐるぐるスピナーのCSS ★★★ */
 .spinner {
   width: 32px;
   height: 32px;
-  border: 4px solid rgba(99, 102, 241, 0.2); /* 薄いインディゴ */
-  border-top-color: #4f46e5; /* 濃いインディゴ */
+  border: 4px solid rgba(99, 102, 241, 0.2);
+  border-top-color: #4f46e5;
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }

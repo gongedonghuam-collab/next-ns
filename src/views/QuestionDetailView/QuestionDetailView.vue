@@ -29,6 +29,7 @@
         <QuizCard
           :question="targetQuestion"
           :index="0"
+          :is-review-mode="isReviewMode"
           @answer="handleAnswer"
         />
       </div>
@@ -63,10 +64,12 @@ const { masterQuestions, fetchAllQuestions, saveAnswer } = useNextNs();
 const targetQuestion = ref<Question | null>(null);
 const loading = ref(true);
 
+// ★追加: URLクエリからモード判定
+const isReviewMode = computed(() => route.query.mode === "review");
+
 onMounted(async () => {
   const questionId = route.params.id as string;
 
-  // 1. まず手元のマスターデータから探す (高速)
   if (masterQuestions.value.length === 0) {
     await fetchAllQuestions();
   }
@@ -76,7 +79,6 @@ onMounted(async () => {
     targetQuestion.value = found;
     loading.value = false;
   } else {
-    // 2. なければFirestoreから直接取得 (念のため)
     try {
       const docRef = doc(db, "questions", questionId);
       const snap = await getDoc(docRef);
@@ -91,12 +93,14 @@ onMounted(async () => {
   }
 });
 
-// 回答時の処理（履歴に残すかどうかはお好みで。今回は残す設定にします）
 const handleAnswer = async (
   isCorrect: boolean,
   choiceIndex: number,
   confidence: any
 ) => {
+  // レビューモードで見ているときは、履歴を保存しない（重複を防ぐため）
+  if (isReviewMode.value) return;
+
   if (targetQuestion.value) {
     await saveAnswer(targetQuestion.value, choiceIndex, isCorrect, confidence);
   }

@@ -7,11 +7,12 @@ import {
   getDocs,
   setDoc,
   updateDoc,
-  deleteDoc, // ★ 追加
+  deleteDoc,
   query,
   orderBy,
   serverTimestamp,
   limit,
+  getCountFromServer, // ★追加: 数を数える機能
 } from "firebase/firestore";
 import type { Question } from "@/types";
 
@@ -23,16 +24,13 @@ export interface MockExam {
   questionIds: string[];
   deadline: any;
   createdAt: any;
-  // ★ 統計データを国試用に詳細化
   stats?: {
     totalParticipants: number;
-    // 必修問題
-    mandatoryMax: number; // 満点
-    mandatoryBorder: number; // 合格ライン(80%)
-    // 一般+状況設定問題
-    generalMax: number; // 満点
-    generalBorder: number; // 合格ライン(相対評価)
-    generalAverage: number; // 平均点
+    mandatoryMax: number;
+    mandatoryBorder: number;
+    generalMax: number;
+    generalBorder: number;
+    generalAverage: number;
   };
 }
 
@@ -40,9 +38,9 @@ export interface MockExam {
 export interface MockSubmission {
   userId: string;
   userAnswers: number[];
-  score: number; // 総合点
-  mandatoryScore: number; // ★追加: 必修の得点
-  generalScore: number; // ★追加: 一般+状況の得点
+  score: number;
+  mandatoryScore: number;
+  generalScore: number;
   submittedAt: any;
 }
 
@@ -51,6 +49,9 @@ export function useMockExam() {
   const activeExam = ref<MockExam | null>(null);
   const userSubmission = ref<MockSubmission | null>(null);
   const examQuestions = ref<Question[]>([]);
+
+  // ★追加: 現在の回答者数
+  const currentAnswerCount = ref(0);
 
   // 1. 最新の模試情報を取得
   const fetchLatestExam = async (userId?: string) => {
@@ -73,6 +74,7 @@ export function useMockExam() {
             : new Date(docData.deadline),
         } as MockExam;
 
+        // ログインユーザーの回答状況を取得
         if (userId) {
           const subRef = doc(
             db,
@@ -113,7 +115,7 @@ export function useMockExam() {
     loading.value = false;
   };
 
-  // 3. 提出 (点数を種別ごとに集計して保存)
+  // 3. 提出
   const submitExam = async (
     userId: string,
     answers: number[],
@@ -128,15 +130,13 @@ export function useMockExam() {
       let generalScore = 0;
 
       questions.forEach((q, index) => {
-        // 正解しているか
         const isCorrect = q.correctIndices.includes(answers[index]);
         if (isCorrect) {
           totalScore++;
-          // 問題タイプで振り分け
           if (q.type === "mandatory") {
             mandatoryScore++;
           } else {
-            generalScore++; // 一般 or 状況設定
+            generalScore++;
           }
         }
       });
@@ -150,13 +150,11 @@ export function useMockExam() {
         submittedAt: serverTimestamp(),
       };
 
-      // Firestore保存
       await setDoc(
         doc(db, "mock_exams", activeExam.value.id, "submissions", userId),
         submissionData
       );
 
-      // ローカル更新
       userSubmission.value = {
         ...submissionData,
         submittedAt: new Date(),
@@ -206,7 +204,7 @@ export function useMockExam() {
     }
   };
 
-  // 5. ★★★ 集計ロジック（国試仕様） ★★★
+  // 5. 集計ロジック
   const closeAndReleaseExam = async (examId: string) => {
     if (
       !confirm(
@@ -217,7 +215,6 @@ export function useMockExam() {
 
     loading.value = true;
     try {
-      // 1. 全回答を取得
       const subCol = collection(db, "mock_exams", examId, "submissions");
       const snap = await getDocs(subCol);
       const submissions = snap.docs.map((d) => d.data() as MockSubmission);
@@ -225,14 +222,12 @@ export function useMockExam() {
       const totalParticipants = submissions.length;
       if (totalParticipants === 0) throw new Error("回答者が0人です");
 
-      // 2. 問題情報を再取得して配点を計算（満点を出すため）
       const examDoc = await getDoc(doc(db, "mock_exams", examId));
       const qIds = examDoc.data()?.questionIds || [];
 
       let mandatoryMax = 0;
       let generalMax = 0;
 
-      // 30問分のデータを取得して満点を計算
       for (const qId of qIds) {
         const qSnap = await getDoc(doc(db, "questions", qId));
         if (qSnap.exists()) {
@@ -242,25 +237,16 @@ export function useMockExam() {
         }
       }
 
-      // 3. 【必修】ボーダー計算（絶対評価 80%）
       const mandatoryBorder = Math.ceil(mandatoryMax * 0.8);
 
-      // 4. 【一般】ボーダー計算（相対評価 合格率約90%ライン）
-      // 一般スコアだけで降順ソート
       const sortedGeneralScores = submissions
         .map((s) => s.generalScore)
         .sort((a, b) => b - a);
 
-      // 上位90%のラインを計算
-      // 例: 100人いたら90番目の人の点数がボーダー
-      // もし人数が少なすぎる場合は、平均点などを代用する安全策も考慮できますが、
-      // 今回は厳密に「下位10%切り捨て」ロジックで実装します。
       const borderIndex = Math.floor(totalParticipants * 0.9) - 1;
-      const safeBorderIndex = Math.max(0, borderIndex); // インデックスが負にならないよう調整
-
+      const safeBorderIndex = Math.max(0, borderIndex);
       const generalBorder = sortedGeneralScores[safeBorderIndex];
 
-      // 一般の平均点（参考用）
       const totalGeneral = submissions.reduce(
         (sum, s) => sum + s.generalScore,
         0
@@ -268,7 +254,6 @@ export function useMockExam() {
       const generalAverage =
         Math.round((totalGeneral / totalParticipants) * 10) / 10;
 
-      // 5. 保存
       await updateDoc(doc(db, "mock_exams", examId), {
         status: "released",
         stats: {
@@ -292,7 +277,7 @@ export function useMockExam() {
     }
   };
 
-  // ★★★ 6. 追加: 模試削除機能 ★★★
+  // 6. 模試削除機能
   const deleteMockExam = async (examId: string) => {
     if (
       !confirm(
@@ -303,17 +288,25 @@ export function useMockExam() {
 
     loading.value = true;
     try {
-      // サブコレクションの削除はクライアントSDKからは原則1つずつ消す必要があるが、
-      // 親ドキュメントを消せばアプリ上からは見えなくなるので今回は親のみ削除
-      // (厳密にはCloud Functions等でサブコレクションも消すのがベスト)
       await deleteDoc(doc(db, "mock_exams", examId));
       alert("削除しました");
-      activeExam.value = null; // 画面表示をクリア
-      await fetchLatestExam(); // 最新状態（もし他にあれば）を取得
+      activeExam.value = null;
+      await fetchLatestExam();
     } catch (e: any) {
       alert("削除エラー: " + e.message);
     } finally {
       loading.value = false;
+    }
+  };
+
+  // ★追加: 現在の回答数を取得する関数
+  const fetchAnswerCount = async (examId: string) => {
+    try {
+      const coll = collection(db, "mock_exams", examId, "submissions");
+      const snapshot = await getCountFromServer(coll);
+      currentAnswerCount.value = snapshot.data().count;
+    } catch (e) {
+      console.error("回答数取得エラー", e);
     }
   };
 
@@ -322,11 +315,13 @@ export function useMockExam() {
     activeExam,
     userSubmission,
     examQuestions,
+    currentAnswerCount, // エクスポート
     fetchLatestExam,
     loadExamQuestions,
     submitExam,
     createMockExam,
     closeAndReleaseExam,
-    deleteMockExam, // ★ エクスポート追加
+    deleteMockExam,
+    fetchAnswerCount, // エクスポート
   };
 }

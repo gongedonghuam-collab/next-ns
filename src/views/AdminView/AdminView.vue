@@ -54,6 +54,20 @@
           </p>
 
           <div v-if="activeExam.status === 'active'">
+            <div
+              class="bg-white p-4 rounded-xl border border-indigo-100 mb-4 text-center shadow-sm"
+            >
+              <p class="text-xs font-bold text-slate-400 mb-1">
+                現在の回答者数
+              </p>
+              <div class="flex items-baseline justify-center gap-1">
+                <span class="text-3xl font-black text-indigo-600">{{
+                  currentAnswerCount
+                }}</span>
+                <span class="text-sm font-bold text-slate-500">人</span>
+              </div>
+            </div>
+
             <button
               @click="closeAndReleaseExam(activeExam.id)"
               :disabled="loading"
@@ -331,7 +345,7 @@ import { useRouter } from "vue-router";
 import { useNextNs } from "@/composables/useNextNs";
 import { useAdmin } from "@/composables/useAdmin";
 import { useMockExam } from "@/composables/useMockExam";
-import JsonUploader from "@/components/JsonUploader.vue"; // ★ 追加
+import JsonUploader from "@/components/JsonUploader.vue";
 import type { Question } from "@/types";
 
 const router = useRouter();
@@ -342,13 +356,14 @@ const {
 } = useNextNs();
 const { addQuestion, updateQuestion, removeQuestion, loading } = useAdmin();
 
-// ★ 追加: 模試ロジック (deleteMockExam を追加)
 const {
   activeExam,
   fetchLatestExam,
   createMockExam,
   closeAndReleaseExam,
   deleteMockExam,
+  currentAnswerCount, // ★追加
+  fetchAnswerCount, // ★追加
 } = useMockExam();
 const newMockTitle = ref("");
 
@@ -371,12 +386,20 @@ const editForm = reactive(initNewQ());
 onMounted(async () => {
   await fetchAllQuestions();
   await fetchLatestExam();
+  // ★追加: 模試があれば回答数を取得
+  if (activeExam.value) {
+    await fetchAnswerCount(activeExam.value.id);
+  }
 });
 
 const handleCreateMock = async () => {
   if (!newMockTitle.value) return alert("タイトルを入力してください");
   await createMockExam(newMockTitle.value, 3, masterQuestions.value);
   newMockTitle.value = "";
+  // 作成直後もカウント再取得
+  if (activeExam.value) {
+    await fetchAnswerCount(activeExam.value.id);
+  }
 };
 
 const filteredQuestions = computed(() => {

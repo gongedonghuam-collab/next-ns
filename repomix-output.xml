@@ -2702,47 +2702,63 @@ const handleAnswer = async (
 
 <file path="src/views/RankingView/RankingView.vue">
 <template>
-  <div class="pb-32 animate-fade-in">
+  <div class="min-h-screen bg-slate-50 font-sans pb-40">
     <div
-      class="bg-gradient-to-r from-indigo-600 to-purple-600 p-6 rounded-b-[40px] shadow-lg mb-6 text-white"
+      class="bg-gradient-to-br from-indigo-600 to-purple-700 rounded-b-[40px] shadow-xl shadow-indigo-200 relative overflow-hidden flex flex-col justify-end"
+      style="
+        padding-top: max(3rem, env(safe-area-inset-top));
+        padding-bottom: 5rem;
+      "
     >
-      <div class="flex justify-between items-center mb-4">
-        <h2 class="text-xl font-black tracking-tight flex items-center gap-2">
-          🏆 Ranking
-        </h2>
-        <div class="text-xs font-bold bg-white/20 px-3 py-1 rounded-full">
-          TOP 50
-        </div>
-      </div>
-
       <div
-        class="bg-white/10 backdrop-blur-md rounded-2xl p-4 flex items-center justify-between border border-white/20"
-      >
-        <div>
-          <p
-            class="text-[10px] font-bold text-indigo-100 uppercase tracking-widest"
-          >
-            Your Rank
-          </p>
-          <div class="text-3xl font-black text-white mt-1">
-            {{ myRankText }}
+        class="absolute top-[-20%] right-[-10%] w-64 h-64 bg-white/10 rounded-full blur-3xl pointer-events-none"
+      ></div>
+      <div
+        class="absolute bottom-[-10%] left-[-10%] w-48 h-48 bg-purple-500/20 rounded-full blur-2xl pointer-events-none"
+      ></div>
+
+      <div class="relative z-10 w-full px-6">
+        <h2
+          class="text-center font-black text-2xl tracking-wider mb-6 text-white flex items-center justify-center gap-2 drop-shadow-md"
+        >
+          <span class="text-3xl filter drop-shadow-sm">🏆</span> LEADERBOARD
+        </h2>
+
+        <div
+          class="bg-white/10 backdrop-blur-md border border-white/20 rounded-3xl p-5 flex justify-between items-center shadow-lg"
+        >
+          <div class="text-center flex-1 px-2 border-r border-white/20">
+            <p
+              class="text-[10px] font-bold text-indigo-100 uppercase tracking-widest opacity-80 mb-1"
+            >
+              RANK
+            </p>
+            <div
+              class="text-4xl font-black text-white leading-none drop-shadow-sm"
+            >
+              {{ myRankText }}
+              <span class="text-sm font-bold opacity-80 ml-0.5">位</span>
+            </div>
           </div>
-        </div>
-        <div class="text-right">
-          <p
-            class="text-[10px] font-bold text-indigo-100 uppercase tracking-widest"
-          >
-            Total Exp
-          </p>
-          <div class="text-xl font-black text-white mt-1">
-            {{ currentUser?.totalExp || totalExp }}
-            <span class="text-xs font-normal opacity-80">pt</span>
+
+          <div class="text-center flex-1 px-2">
+            <p
+              class="text-[10px] font-bold text-indigo-100 uppercase tracking-widest opacity-80 mb-1"
+            >
+              EXP
+            </p>
+            <div
+              class="text-2xl font-black text-white leading-none drop-shadow-sm"
+            >
+              {{ formatNum(currentUser?.totalExp || totalExp) }}
+              <span class="text-[10px] opacity-80">pt</span>
+            </div>
           </div>
         </div>
       </div>
     </div>
 
-    <div class="px-4">
+    <div class="px-5 -mt-12 relative z-20 w-full space-y-3">
       <div
         v-if="loading"
         class="text-center py-20 text-slate-400 font-bold animate-pulse"
@@ -2754,45 +2770,54 @@ const handleAnswer = async (
         <div
           v-for="(user, index) in rankingList"
           :key="user.uid"
-          class="flex items-center gap-4 p-4 bg-white rounded-2xl shadow-sm border border-slate-100 relative overflow-hidden transition hover:scale-[1.01]"
+          class="bg-white rounded-2xl p-4 flex items-center shadow-sm border border-slate-100 relative overflow-hidden transition-transform active:scale-[0.98]"
           :class="{
-            'ring-2 ring-indigo-400 bg-indigo-50/30':
+            'ring-2 ring-indigo-500 z-10 bg-indigo-50/50':
               user.uid === currentUser?.uid,
           }"
         >
-          <div
-            class="w-10 h-10 flex items-center justify-center font-black rounded-full text-lg shadow-inner shrink-0"
-            :class="getRankColor(index + 1)"
-          >
-            {{ index + 1 }}
+          <div class="w-12 flex-shrink-0 flex justify-center text-center">
+            <div
+              v-if="index < 3"
+              class="text-3xl drop-shadow-md transform scale-110"
+            >
+              {{ index === 0 ? "🥇" : index === 1 ? "🥈" : "🥉" }}
+            </div>
+            <div
+              v-else
+              class="w-8 h-8 flex items-center justify-center font-black text-slate-500 bg-slate-100 rounded-full text-sm"
+            >
+              {{ index + 1 }}
+            </div>
           </div>
 
-          <div class="flex-1 min-w-0 z-10">
-            <div class="font-bold text-slate-800 truncate">
-              {{ user.displayName || "名無しナース" }}
+          <div class="ml-3 flex-1 min-w-0">
+            <div class="flex items-center gap-2 mb-1">
+              <span
+                class="font-bold text-slate-800 truncate text-sm tracking-tight"
+              >
+                {{ user.displayName || "名無しナース" }}
+              </span>
               <span
                 v-if="user.uid === currentUser?.uid"
-                class="ml-1 text-[10px] bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full"
+                class="bg-indigo-600 text-white text-[9px] px-2 py-0.5 rounded-full font-black shadow-sm tracking-wider"
                 >YOU</span
               >
             </div>
-            <div class="text-xs text-slate-400 font-bold mt-0.5">
+            <span
+              class="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded"
+            >
               Lv.{{ Math.floor((user.totalExp || 0) / 100) + 1 }}
-            </div>
+            </span>
           </div>
 
-          <div class="text-right z-10">
-            <div class="font-black text-slate-800 text-lg tracking-tight">
+          <div class="text-right pl-2">
+            <div class="font-black text-slate-800 text-lg leading-none">
               {{ formatNum(user.totalExp || 0) }}
             </div>
-            <div class="text-[9px] font-bold text-slate-400 uppercase">Exp</div>
-          </div>
-
-          <div
-            v-if="index < 3"
-            class="absolute -right-4 -bottom-4 text-6xl opacity-10 select-none"
-          >
-            {{ index === 0 ? "👑" : index === 1 ? "🥈" : "🥉" }}
+            <div class="text-[9px] font-bold text-slate-400 uppercase mt-0.5">
+              EXP
+            </div>
           </div>
         </div>
       </div>
@@ -2804,8 +2829,14 @@ const handleAnswer = async (
 import { onMounted, computed } from "vue";
 import { useNextNs } from "@/composables/useNextNs";
 
-const { currentUser, rankingList, fetchRanking, loading, totalExp } =
-  useNextNs();
+const {
+  currentUser,
+  rankingList,
+  fetchRanking,
+  loading,
+  totalExp,
+  currentLevel,
+} = useNextNs();
 
 onMounted(() => {
   fetchRanking();
@@ -2816,17 +2847,8 @@ const myRankText = computed(() => {
   const index = rankingList.value.findIndex(
     (u) => u.uid === currentUser.value?.uid
   );
-  return index !== -1 ? `${index + 1}位` : "圏外";
+  return index !== -1 ? `${index + 1}` : "-";
 });
-
-const getRankColor = (rank: number) => {
-  if (rank === 1)
-    return "bg-yellow-100 text-yellow-600 border border-yellow-200";
-  if (rank === 2) return "bg-slate-200 text-slate-600 border border-slate-300";
-  if (rank === 3)
-    return "bg-orange-100 text-orange-600 border border-orange-200";
-  return "bg-slate-50 text-slate-400 border border-slate-100 text-sm";
-};
 
 const formatNum = (num: number) => {
   return num.toLocaleString();
@@ -2840,11 +2862,9 @@ const formatNum = (num: number) => {
 @keyframes fadeIn {
   from {
     opacity: 0;
-    transform: translateY(10px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
   }
 }
 </style>
@@ -3434,11 +3454,12 @@ import {
   getDocs,
   setDoc,
   updateDoc,
-  deleteDoc, // ★ 追加
+  deleteDoc,
   query,
   orderBy,
   serverTimestamp,
   limit,
+  getCountFromServer, // ★追加: 数を数える機能
 } from "firebase/firestore";
 import type { Question } from "@/types";
 
@@ -3450,16 +3471,13 @@ export interface MockExam {
   questionIds: string[];
   deadline: any;
   createdAt: any;
-  // ★ 統計データを国試用に詳細化
   stats?: {
     totalParticipants: number;
-    // 必修問題
-    mandatoryMax: number; // 満点
-    mandatoryBorder: number; // 合格ライン(80%)
-    // 一般+状況設定問題
-    generalMax: number; // 満点
-    generalBorder: number; // 合格ライン(相対評価)
-    generalAverage: number; // 平均点
+    mandatoryMax: number;
+    mandatoryBorder: number;
+    generalMax: number;
+    generalBorder: number;
+    generalAverage: number;
   };
 }
 
@@ -3467,9 +3485,9 @@ export interface MockExam {
 export interface MockSubmission {
   userId: string;
   userAnswers: number[];
-  score: number; // 総合点
-  mandatoryScore: number; // ★追加: 必修の得点
-  generalScore: number; // ★追加: 一般+状況の得点
+  score: number;
+  mandatoryScore: number;
+  generalScore: number;
   submittedAt: any;
 }
 
@@ -3478,6 +3496,9 @@ export function useMockExam() {
   const activeExam = ref<MockExam | null>(null);
   const userSubmission = ref<MockSubmission | null>(null);
   const examQuestions = ref<Question[]>([]);
+
+  // ★追加: 現在の回答者数
+  const currentAnswerCount = ref(0);
 
   // 1. 最新の模試情報を取得
   const fetchLatestExam = async (userId?: string) => {
@@ -3500,6 +3521,7 @@ export function useMockExam() {
             : new Date(docData.deadline),
         } as MockExam;
 
+        // ログインユーザーの回答状況を取得
         if (userId) {
           const subRef = doc(
             db,
@@ -3540,7 +3562,7 @@ export function useMockExam() {
     loading.value = false;
   };
 
-  // 3. 提出 (点数を種別ごとに集計して保存)
+  // 3. 提出
   const submitExam = async (
     userId: string,
     answers: number[],
@@ -3555,15 +3577,13 @@ export function useMockExam() {
       let generalScore = 0;
 
       questions.forEach((q, index) => {
-        // 正解しているか
         const isCorrect = q.correctIndices.includes(answers[index]);
         if (isCorrect) {
           totalScore++;
-          // 問題タイプで振り分け
           if (q.type === "mandatory") {
             mandatoryScore++;
           } else {
-            generalScore++; // 一般 or 状況設定
+            generalScore++;
           }
         }
       });
@@ -3577,13 +3597,11 @@ export function useMockExam() {
         submittedAt: serverTimestamp(),
       };
 
-      // Firestore保存
       await setDoc(
         doc(db, "mock_exams", activeExam.value.id, "submissions", userId),
         submissionData
       );
 
-      // ローカル更新
       userSubmission.value = {
         ...submissionData,
         submittedAt: new Date(),
@@ -3633,7 +3651,7 @@ export function useMockExam() {
     }
   };
 
-  // 5. ★★★ 集計ロジック（国試仕様） ★★★
+  // 5. 集計ロジック
   const closeAndReleaseExam = async (examId: string) => {
     if (
       !confirm(
@@ -3644,7 +3662,6 @@ export function useMockExam() {
 
     loading.value = true;
     try {
-      // 1. 全回答を取得
       const subCol = collection(db, "mock_exams", examId, "submissions");
       const snap = await getDocs(subCol);
       const submissions = snap.docs.map((d) => d.data() as MockSubmission);
@@ -3652,14 +3669,12 @@ export function useMockExam() {
       const totalParticipants = submissions.length;
       if (totalParticipants === 0) throw new Error("回答者が0人です");
 
-      // 2. 問題情報を再取得して配点を計算（満点を出すため）
       const examDoc = await getDoc(doc(db, "mock_exams", examId));
       const qIds = examDoc.data()?.questionIds || [];
 
       let mandatoryMax = 0;
       let generalMax = 0;
 
-      // 30問分のデータを取得して満点を計算
       for (const qId of qIds) {
         const qSnap = await getDoc(doc(db, "questions", qId));
         if (qSnap.exists()) {
@@ -3669,25 +3684,16 @@ export function useMockExam() {
         }
       }
 
-      // 3. 【必修】ボーダー計算（絶対評価 80%）
       const mandatoryBorder = Math.ceil(mandatoryMax * 0.8);
 
-      // 4. 【一般】ボーダー計算（相対評価 合格率約90%ライン）
-      // 一般スコアだけで降順ソート
       const sortedGeneralScores = submissions
         .map((s) => s.generalScore)
         .sort((a, b) => b - a);
 
-      // 上位90%のラインを計算
-      // 例: 100人いたら90番目の人の点数がボーダー
-      // もし人数が少なすぎる場合は、平均点などを代用する安全策も考慮できますが、
-      // 今回は厳密に「下位10%切り捨て」ロジックで実装します。
       const borderIndex = Math.floor(totalParticipants * 0.9) - 1;
-      const safeBorderIndex = Math.max(0, borderIndex); // インデックスが負にならないよう調整
-
+      const safeBorderIndex = Math.max(0, borderIndex);
       const generalBorder = sortedGeneralScores[safeBorderIndex];
 
-      // 一般の平均点（参考用）
       const totalGeneral = submissions.reduce(
         (sum, s) => sum + s.generalScore,
         0
@@ -3695,7 +3701,6 @@ export function useMockExam() {
       const generalAverage =
         Math.round((totalGeneral / totalParticipants) * 10) / 10;
 
-      // 5. 保存
       await updateDoc(doc(db, "mock_exams", examId), {
         status: "released",
         stats: {
@@ -3719,7 +3724,7 @@ export function useMockExam() {
     }
   };
 
-  // ★★★ 6. 追加: 模試削除機能 ★★★
+  // 6. 模試削除機能
   const deleteMockExam = async (examId: string) => {
     if (
       !confirm(
@@ -3730,17 +3735,25 @@ export function useMockExam() {
 
     loading.value = true;
     try {
-      // サブコレクションの削除はクライアントSDKからは原則1つずつ消す必要があるが、
-      // 親ドキュメントを消せばアプリ上からは見えなくなるので今回は親のみ削除
-      // (厳密にはCloud Functions等でサブコレクションも消すのがベスト)
       await deleteDoc(doc(db, "mock_exams", examId));
       alert("削除しました");
-      activeExam.value = null; // 画面表示をクリア
-      await fetchLatestExam(); // 最新状態（もし他にあれば）を取得
+      activeExam.value = null;
+      await fetchLatestExam();
     } catch (e: any) {
       alert("削除エラー: " + e.message);
     } finally {
       loading.value = false;
+    }
+  };
+
+  // ★追加: 現在の回答数を取得する関数
+  const fetchAnswerCount = async (examId: string) => {
+    try {
+      const coll = collection(db, "mock_exams", examId, "submissions");
+      const snapshot = await getCountFromServer(coll);
+      currentAnswerCount.value = snapshot.data().count;
+    } catch (e) {
+      console.error("回答数取得エラー", e);
     }
   };
 
@@ -3749,12 +3762,14 @@ export function useMockExam() {
     activeExam,
     userSubmission,
     examQuestions,
+    currentAnswerCount, // エクスポート
     fetchLatestExam,
     loadExamQuestions,
     submitExam,
     createMockExam,
     closeAndReleaseExam,
-    deleteMockExam, // ★ エクスポート追加
+    deleteMockExam,
+    fetchAnswerCount, // エクスポート
   };
 }
 </file>
@@ -3965,6 +3980,20 @@ export function useNotifications() {
           </p>
 
           <div v-if="activeExam.status === 'active'">
+            <div
+              class="bg-white p-4 rounded-xl border border-indigo-100 mb-4 text-center shadow-sm"
+            >
+              <p class="text-xs font-bold text-slate-400 mb-1">
+                現在の回答者数
+              </p>
+              <div class="flex items-baseline justify-center gap-1">
+                <span class="text-3xl font-black text-indigo-600">{{
+                  currentAnswerCount
+                }}</span>
+                <span class="text-sm font-bold text-slate-500">人</span>
+              </div>
+            </div>
+
             <button
               @click="closeAndReleaseExam(activeExam.id)"
               :disabled="loading"
@@ -4242,7 +4271,7 @@ import { useRouter } from "vue-router";
 import { useNextNs } from "@/composables/useNextNs";
 import { useAdmin } from "@/composables/useAdmin";
 import { useMockExam } from "@/composables/useMockExam";
-import JsonUploader from "@/components/JsonUploader.vue"; // ★ 追加
+import JsonUploader from "@/components/JsonUploader.vue";
 import type { Question } from "@/types";
 
 const router = useRouter();
@@ -4253,13 +4282,14 @@ const {
 } = useNextNs();
 const { addQuestion, updateQuestion, removeQuestion, loading } = useAdmin();
 
-// ★ 追加: 模試ロジック (deleteMockExam を追加)
 const {
   activeExam,
   fetchLatestExam,
   createMockExam,
   closeAndReleaseExam,
   deleteMockExam,
+  currentAnswerCount, // ★追加
+  fetchAnswerCount, // ★追加
 } = useMockExam();
 const newMockTitle = ref("");
 
@@ -4282,12 +4312,20 @@ const editForm = reactive(initNewQ());
 onMounted(async () => {
   await fetchAllQuestions();
   await fetchLatestExam();
+  // ★追加: 模試があれば回答数を取得
+  if (activeExam.value) {
+    await fetchAnswerCount(activeExam.value.id);
+  }
 });
 
 const handleCreateMock = async () => {
   if (!newMockTitle.value) return alert("タイトルを入力してください");
   await createMockExam(newMockTitle.value, 3, masterQuestions.value);
   newMockTitle.value = "";
+  // 作成直後もカウント再取得
+  if (activeExam.value) {
+    await fetchAnswerCount(activeExam.value.id);
+  }
 };
 
 const filteredQuestions = computed(() => {
@@ -5546,147 +5584,6 @@ const resetFilter = () => {
 </template>
 </file>
 
-<file path="src/views/StudyView/StudyView.vue">
-<script setup lang="ts">
-import { onMounted, computed } from "vue";
-import { useRouter } from "vue-router";
-import { useNextNs } from "@/composables/useNextNs";
-import QuizCard from "@/components/QuizCard/QuizCard.vue";
-
-const router = useRouter();
-const {
-  questions,
-  loading,
-  fetchQuestions,
-  selectedPeriod,
-  currentSessionIndex,
-  saveAnswer,
-  clearSession,
-  goToNext,
-  finishSession, // ★ 追加
-} = useNextNs();
-
-onMounted(async () => {
-  await fetchQuestions({});
-});
-
-const currentQuestion = computed(
-  () => questions.value[currentSessionIndex.value] || null
-);
-
-const handleAnswer = async (
-  isCorrect: boolean,
-  choiceIndex: number,
-  confidence: any
-) => {
-  if (!currentQuestion.value) return;
-  await saveAnswer(currentQuestion.value, choiceIndex, isCorrect, confidence);
-};
-
-// ★ 修正: 最後の問題なら集計してリザルトへ
-const handleNext = () => {
-  if (currentSessionIndex.value < questions.value.length - 1) {
-    goToNext();
-  } else {
-    finishSession(); // 集計実行
-    router.push("/result"); // 画面遷移
-  }
-};
-
-const resetAndFetch = async (mode: "all" | "am" | "pm") => {
-  if (confirm("現在の進捗をリセットして、新しく問題を読み込みますか？")) {
-    clearSession();
-    selectedPeriod.value = mode;
-    await fetchQuestions({ force: true });
-  }
-};
-
-const isAnsweredLocally = (q: any) => {
-  return !!q?.lastResult;
-};
-</script>
-
-<template>
-  <div class="min-h-screen bg-slate-50 pb-24 font-sans">
-    <header
-      class="bg-white px-6 py-4 sticky top-0 z-30 shadow-sm border-b border-slate-100 flex items-center justify-between"
-    >
-      <button
-        @click="router.push('/')"
-        class="text-slate-400 font-bold text-sm"
-      >
-        ← 終了
-      </button>
-      <div class="text-center">
-        <span
-          class="text-[10px] font-black text-blue-600 block tracking-widest uppercase"
-          >Training Mode</span
-        >
-        <span class="text-xs font-bold text-slate-400">
-          今回: {{ currentSessionIndex + 1 }} / {{ questions.length }}問目
-        </span>
-      </div>
-      <button
-        @click="resetAndFetch(selectedPeriod)"
-        class="text-blue-500 text-[10px] font-black border border-blue-100 px-2 py-1 rounded-lg bg-blue-50 transition active:scale-95"
-      >
-        リセット
-      </button>
-    </header>
-
-    <main class="max-w-md mx-auto px-6 pt-6">
-      <div class="flex gap-2 mb-6 bg-slate-200/50 p-1 rounded-2xl">
-        <button
-          v-for="m in [
-            { id: 'all', n: '全件' },
-            { id: 'am', n: '午前のみ' },
-            { id: 'pm', n: '午後のみ' },
-          ]"
-          :key="m.id"
-          @click="resetAndFetch(m.id as any)"
-          class="flex-1 py-2 text-xs font-bold rounded-xl transition-all"
-          :class="
-            selectedPeriod === m.id
-              ? 'bg-white text-blue-600 shadow-sm'
-              : 'text-slate-500'
-          "
-        >
-          {{ m.n }}
-        </button>
-      </div>
-
-      <div
-        v-if="loading"
-        class="py-20 text-center text-slate-400 font-bold animate-pulse"
-      >
-        問題を準備しています...
-      </div>
-
-      <div v-else-if="currentQuestion">
-        <QuizCard
-          :question="currentQuestion"
-          :index="currentSessionIndex"
-          @answer="handleAnswer"
-        />
-
-        <button
-          v-if="isAnsweredLocally(currentQuestion)"
-          @click="handleNext"
-          class="w-full py-5 bg-blue-600 text-white font-black rounded-3xl shadow-xl shadow-blue-200 mt-4 active:scale-95 transition-all flex items-center justify-center gap-2"
-        >
-          <span>{{
-            currentSessionIndex < questions.length - 1
-              ? "次の問題へ進む"
-              : "結果を見る"
-          }}</span>
-          <span class="text-xl">→</span>
-        </button>
-      </div>
-    </main>
-  </div>
-</template>
-</file>
-
 <file path="src/views/VerifyEmailView/VerifyEmailView.vue">
 <script setup lang="ts">
 import { ref } from "vue";
@@ -6501,7 +6398,6 @@ export interface User {
   createdAt: any;
   totalExp?: number;
   lastActiveAt?: any;
-  // ★ ここが追加された重要な部分です
   isPremium?: boolean;
   aiUsage?: {
     count: number; // 今日の使用回数
@@ -6519,7 +6415,116 @@ export interface StudyLog {
   confidence?: "ok" | "so-so" | "ng";
   createdAt: any;
   aiAdvice?: string; // AIのアドバイス履歴用
+  // ★★★ 追加部分 ★★★
+  mode?: string; // "random100" | "examYear" など
+  targetYear?: string | null; // "第113回" など
 }
+</file>
+
+<file path="src/views/StudyView/StudyView.vue">
+<script setup lang="ts">
+import { onMounted, computed } from "vue";
+import { useRouter } from "vue-router";
+import { useNextNs } from "@/composables/useNextNs";
+import QuizCard from "@/components/QuizCard/QuizCard.vue";
+
+const router = useRouter();
+const {
+  questions,
+  loading,
+  fetchQuestions,
+  currentSessionIndex,
+  saveAnswer,
+  goToNext,
+  finishSession,
+} = useNextNs();
+
+onMounted(async () => {
+  // 保存されたセッションがあれば復元、なければよしなにロード
+  await fetchQuestions({});
+});
+
+const currentQuestion = computed(
+  () => questions.value[currentSessionIndex.value] || null
+);
+
+const handleAnswer = async (
+  isCorrect: boolean,
+  choiceIndex: number,
+  confidence: any
+) => {
+  if (!currentQuestion.value) return;
+  await saveAnswer(currentQuestion.value, choiceIndex, isCorrect, confidence);
+};
+
+const handleNext = () => {
+  if (currentSessionIndex.value < questions.value.length - 1) {
+    goToNext();
+  } else {
+    finishSession();
+    router.push("/result");
+  }
+};
+
+const isAnsweredLocally = (q: any) => {
+  return !!q?.lastResult;
+};
+</script>
+
+<template>
+  <div class="min-h-screen bg-slate-50 pb-24 font-sans">
+    <header
+      class="bg-white px-6 py-4 sticky top-0 z-30 shadow-sm border-b border-slate-100 flex items-center justify-between"
+    >
+      <button
+        @click="router.push('/')"
+        class="text-slate-400 font-bold text-sm"
+      >
+        ← 終了
+      </button>
+      <div class="text-center">
+        <span
+          class="text-[10px] font-black text-blue-600 block tracking-widest uppercase"
+          >Training Mode</span
+        >
+        <span class="text-xs font-bold text-slate-400">
+          今回: {{ currentSessionIndex + 1 }} / {{ questions.length }}問目
+        </span>
+      </div>
+      <div class="w-10"></div>
+    </header>
+
+    <main class="max-w-md mx-auto px-6 pt-6">
+      <div
+        v-if="loading"
+        class="py-20 text-center text-slate-400 font-bold animate-pulse"
+      >
+        問題を準備しています...
+      </div>
+
+      <div v-else-if="currentQuestion">
+        <QuizCard
+          :question="currentQuestion"
+          :index="currentSessionIndex"
+          @answer="handleAnswer"
+        />
+
+        <button
+          v-if="isAnsweredLocally(currentQuestion)"
+          @click="handleNext"
+          class="w-full py-5 bg-blue-600 text-white font-black rounded-3xl shadow-xl shadow-blue-200 mt-4 active:scale-95 transition-all flex items-center justify-center gap-2"
+        >
+          <span>{{
+            currentSessionIndex < questions.length - 1
+              ? "次の問題へ進む"
+              : "結果を見る"
+          }}</span>
+          <span class="text-xl">→</span>
+        </button>
+      </div>
+    </main>
+  </div>
+</template>
 </file>
 
 <file path="firestore.rules">
@@ -6810,19 +6815,20 @@ exports.notifyOnMockExamCreated = (0, firestore_1.onDocumentCreated)("mock_exams
 
 <file path="functions/index.ts">
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
-import { setGlobalOptions } from "firebase-functions/v2"; // ★追加
+import { setGlobalOptions } from "firebase-functions/v2";
+import { onSchedule } from "firebase-functions/v2/scheduler"; // ★追加
 import * as admin from "firebase-admin";
 
-// 旧コードの互換性のために残す（必要なら import * as functions from "firebase-functions"; に書き換えて使用）
-// const functions = require("firebase-functions");
+// ★重要: ここに削除したくない管理者のUIDを設定してください
+// (src/router/index.ts にある ADMIN_UIDS と同じものを入れてください)
+const ADMIN_UIDS = ["SyfPBfS5D3VMktj2cEzXCxI1dbv1"];
 
-// ★追加: サーバーの場所を東京に設定
 setGlobalOptions({ region: "asia-northeast1" });
 
 admin.initializeApp();
 
 /**
- * ★新機能: 模試が作成されたときに、全ユーザーへプッシュ通知を送信する関数
+ * 1. 模試作成時の通知 (既存機能)
  */
 export const notifyOnMockExamCreated = onDocumentCreated(
   "mock_exams/{examId}",
@@ -6833,7 +6839,6 @@ export const notifyOnMockExamCreated = onDocumentCreated(
     const examData = snapshot.data();
     const title = examData.title || "新しい模試";
 
-    // 1. 送るメッセージの内容設定
     const message = {
       notification: {
         title: "📢 全国統一模試が公開されました！",
@@ -6841,24 +6846,21 @@ export const notifyOnMockExamCreated = onDocumentCreated(
       },
       webpush: {
         fcmOptions: {
-          link: "/mock-exam", // 通知をタップしたら模試画面へ遷移
+          link: "/mock-exam",
         },
       },
     };
 
-    // 2. 全ユーザーのFCMトークンを取得
     const usersSnap = await admin.firestore().collection("users").get();
     let tokens: string[] = [];
 
     usersSnap.forEach((doc) => {
       const userData = doc.data();
-      // fcmTokens配列を持っているユーザーのトークンを収集
       if (userData.fcmTokens && Array.isArray(userData.fcmTokens)) {
         tokens.push(...userData.fcmTokens);
       }
     });
 
-    // 重複したトークンを削除
     tokens = [...new Set(tokens)];
 
     if (tokens.length === 0) {
@@ -6866,14 +6868,12 @@ export const notifyOnMockExamCreated = onDocumentCreated(
       return;
     }
 
-    // 3. 一括送信 (最大500件ずつ)
     try {
       const response = await admin.messaging().sendEachForMulticast({
         tokens: tokens,
         notification: message.notification,
         webpush: message.webpush,
       });
-
       console.log(
         `通知送信完了: 成功 ${response.successCount} 件 / 失敗 ${response.failureCount} 件`
       );
@@ -6883,692 +6883,64 @@ export const notifyOnMockExamCreated = onDocumentCreated(
   }
 );
 
-// ============================================================
-//  以下、旧コード（Stripe決済機能など） ※念のためコメントアウトで保持
-// ============================================================
+/**
+ * 2. 休眠ユーザー自動削除 (新機能)
+ * 毎日深夜0時に実行し、作成から1年以上経過かつ管理者でないユーザーを削除
+ */
+export const deleteInactiveUsers = onSchedule(
+  { schedule: "every day 00:00", timeoutSeconds: 540 },
+  async (event) => {
+    const now = new Date();
+    const oneYearAgo = new Date();
+    oneYearAgo.setFullYear(now.getFullYear() - 1);
 
-// const stripe = require("stripe")(
-//   "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"
-// );
+    console.log(
+      `[AutoDelete] ${oneYearAgo.toISOString()} 以前のユーザーを検索...`
+    );
 
-// // 1. 決済セッションを作成する関数（フロントから呼ばれる）
-// exports.createCheckoutSession = functions.https.onCall(
-//   async (data, context) => {
-//     // ログインしていないと拒否
-//     if (!context.auth) {
-//       throw new functions.https.HttpsError(
-//         "unauthenticated",
-//         "User must be logged in"
-//       );
-//     }
+    try {
+      // 1. 対象ユーザーを検索
+      const usersRef = admin.firestore().collection("users");
+      const snapshot = await usersRef
+        .where("createdAt", "<=", oneYearAgo)
+        .get();
 
-//     const uid = context.auth.uid;
-//     const userEmail = context.auth.token.email;
+      if (snapshot.empty) {
+        console.log("[AutoDelete] 対象ユーザーはいませんでした。");
+        return;
+      }
 
-//     // Stripeで決済セッションを作成
-//     const session = await stripe.checkout.sessions.create({
-//       payment_method_types: ["card"],
-//       mode: "subscription", // サブスクリプションモード
-//       line_items: [
-//         {
-//           price: "price_1SlrgxCRUPdCre1Qlrcvt90g",
-//           quantity: 1,
-//         },
-//       ],
-//       customer_email: userEmail,
-//       metadata: { uid: uid }, // 誰が買ったかわかるようにUIDを埋め込む
-//       success_url: "http://localhost:5173/result?status=success", // 決済成功時の戻り先
-//       cancel_url: "http://localhost:5173/premium", // キャンセル時の戻り先
-//     });
+      console.log(`[AutoDelete] ${snapshot.size} 件の候補が見つかりました。`);
 
-//     return { url: session.url };
-//   }
-// );
+      // 2. 一人ずつチェックして削除
+      const deletePromises = snapshot.docs.map(async (doc) => {
+        const uid = doc.id;
 
-// // 2. 決済完了を受け取るWebhook（Stripeから自動で呼ばれる）
-// exports.stripeWebhook = functions.https.onRequest(async (req, res) => {
-//   const sig = req.headers["stripe-signature"];
-//   const endpointSecret =
-//     "Stripeダッシュボードで取得するWebhook署名シークレット";
+        // ★★★ ガード処理: 管理者ならスキップ ★★★
+        if (ADMIN_UIDS.includes(uid)) {
+          console.log(`[Skip] 管理者アカウントのため削除しません: ${uid}`);
+          return;
+        }
 
-//   let event;
+        try {
+          // Authentication (ログイン情報) を削除
+          await admin.auth().deleteUser(uid);
+          // Firestore (ユーザーデータ) を削除
+          await doc.ref.delete();
 
-//   try {
-//     event = stripe.webhooks.constructEvent(req.rawBody, sig, endpointSecret);
-//   } catch (err) {
-//     return res.status(400).send(`Webhook Error: ${err.message}`);
-//   }
+          console.log(`[Deleted] User: ${uid}`);
+        } catch (err) {
+          console.error(`[Delete Error] User: ${uid}`, err);
+        }
+      });
 
-//   // 決済完了イベントのみ処理
-//   if (event.type === "checkout.session.completed") {
-//     const session = event.data.object;
-//     const uid = session.metadata.uid;
-
-//     // Firestoreのユーザー情報を更新してプレミアムにする
-//     await admin.firestore().collection("users").doc(uid).update({
-//       isPremium: true,
-//       stripeCustomerId: session.customer,
-//       subscriptionId: session.subscription,
-//       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-//     });
-//   }
-
-//   res.json({ received: true });
-// });
-</file>
-
-<file path="src/composables/useNextNs.ts">
-import { ref, computed } from "vue";
-import { db, auth } from "@/firebase";
-import {
-  doc,
-  getDoc,
-  collection,
-  query,
-  limit,
-  getDocs,
-  addDoc,
-  deleteDoc,
-  updateDoc,
-  setDoc,
-  increment,
-  orderBy,
-  serverTimestamp,
-  where,
-} from "firebase/firestore";
-import { onAuthStateChanged, signOut } from "firebase/auth";
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import type { Question, User, StudyLog } from "@/types";
-
-const STORAGE_KEY_SESSION = "nextns_session_questions";
-const STORAGE_KEY_INDEX = "nextns_session_index";
-const STORAGE_KEY_PERIOD = "nextns_session_period";
-
-// --- グローバルステート ---
-const currentUser = ref<User | null>(null);
-const masterQuestions = ref<Question[]>([]);
-const questions = ref<Question[]>([]);
-const reviewQuestions = ref<Question[]>([]);
-const bookmarkedQuestions = ref<Question[]>([]);
-const bookmarkedIds = ref<Set<string>>(new Set());
-const studyLogs = ref<StudyLog[]>([]);
-const loading = ref(false);
-
-const currentSessionIndex = ref(0);
-const selectedPeriod = ref<"all" | "am" | "pm">("all");
-
-// 結果画面用ステート
-const sessionResult = ref<{
-  correct: number;
-  total: number;
-  rate: number;
-  judge: string;
-  judgeText: string;
-} | null>(null);
-
-// ランキングデータ
-const rankingList = ref<User[]>([]);
-
-// 最新の学習ログID（AI解説保存用）
-const lastLogId = ref<string | null>(null);
-
-// ログから算出する一時的な経験値（表示用）
-const totalExp = computed(() =>
-  studyLogs.value.reduce((t, log) => t + (log.isCorrect ? 20 : 5), 0)
+      await Promise.all(deletePromises);
+      console.log("[AutoDelete] 処理完了");
+    } catch (error) {
+      console.error("[AutoDelete] 全体エラー:", error);
+    }
+  }
 );
-
-const currentLevel = computed(() => {
-  const exp = currentUser.value?.totalExp || totalExp.value;
-  return Math.floor(exp / 100) + 1;
-});
-
-const levelProgress = computed(() => {
-  const exp = currentUser.value?.totalExp || totalExp.value;
-  return exp % 100;
-});
-
-const currentRank = computed(() => {
-  const lv = currentLevel.value;
-  if (lv < 5) return "新人ナースの卵";
-  if (lv < 10) return "駆け出しナース";
-  if (lv < 20) return "中堅ナース";
-  return "ベテランナース";
-});
-
-const questionStats = computed(() => {
-  const stats: Record<string, { am: number; pm: number; total: number }> = {};
-  masterQuestions.value.forEach((q) => {
-    const year = q.examYear || "不明";
-    if (!stats[year]) stats[year] = { am: 0, pm: 0, total: 0 };
-    stats[year].total++;
-    if (q.questionNumber?.includes("午前")) stats[year].am++;
-    else if (q.questionNumber?.includes("午後")) stats[year].pm++;
-  });
-  return Object.entries(stats)
-    .map(([year, data]) => ({ year, ...data }))
-    .sort((a, b) => b.year.localeCompare(a.year, undefined, { numeric: true }));
-});
-
-const dbHealthReport = computed(() => {
-  const report: Record<
-    string,
-    { missingAm: string[]; missingPm: string[]; duplicates: string[] }
-  > = {};
-  const grouped = masterQuestions.value.reduce((acc, q) => {
-    const key = q.examYear || "不明";
-    if (!acc[key]) acc[key] = [];
-    acc[key].push(q.questionNumber);
-    return acc;
-  }, {} as Record<string, string[]>);
-
-  Object.entries(grouped).forEach(([year, nums]) => {
-    const am = nums.filter((n) => n.includes("午前"));
-    const pm = nums.filter((n) => n.includes("午後"));
-    const missingAm = [];
-    const missingPm = [];
-    for (let i = 1; i <= 120; i++) {
-      if (!am.includes(`午前${i}`)) missingAm.push(`午前${i}`);
-      if (!pm.includes(`午後${i}`)) missingPm.push(`午後${i}`);
-    }
-    const duplicates = nums.filter(
-      (item, index) => nums.indexOf(item) !== index
-    );
-    report[year] = {
-      missingAm,
-      missingPm,
-      duplicates: [...new Set(duplicates)],
-    };
-  });
-  return report;
-});
-
-export function useNextNs() {
-  const aiResponse = ref("");
-  const isAiThinking = ref(false);
-
-  const saveSession = () => {
-    if (questions.value.length > 0) {
-      localStorage.setItem(
-        STORAGE_KEY_SESSION,
-        JSON.stringify(questions.value)
-      );
-      localStorage.setItem(
-        STORAGE_KEY_INDEX,
-        String(currentSessionIndex.value)
-      );
-      localStorage.setItem(STORAGE_KEY_PERIOD, selectedPeriod.value);
-    }
-  };
-
-  const restoreSession = () => {
-    const saved = localStorage.getItem(STORAGE_KEY_SESSION);
-    const idx = localStorage.getItem(STORAGE_KEY_INDEX);
-    const prd = localStorage.getItem(STORAGE_KEY_PERIOD);
-    if (saved && idx) {
-      try {
-        questions.value = JSON.parse(saved);
-        currentSessionIndex.value = parseInt(idx, 10);
-        if (prd) selectedPeriod.value = prd as any;
-        return true;
-      } catch (e) {
-        return false;
-      }
-    }
-    return false;
-  };
-
-  const clearSession = () => {
-    localStorage.removeItem(STORAGE_KEY_SESSION);
-    localStorage.removeItem(STORAGE_KEY_INDEX);
-    localStorage.removeItem(STORAGE_KEY_PERIOD);
-    currentSessionIndex.value = 0;
-  };
-
-  const fetchAllQuestions = async () => {
-    if (masterQuestions.value.length > 0) return;
-    loading.value = true;
-    try {
-      const q = query(collection(db, "questions"), limit(5000));
-      const snap = await getDocs(q);
-      masterQuestions.value = snap.docs.map(
-        (d) => ({ id: d.id, ...d.data() } as Question)
-      );
-    } finally {
-      loading.value = false;
-    }
-  };
-
-  const fetchReviewQuestions = async () => {
-    if (!currentUser.value) return;
-    const q = query(
-      collection(db, "study_logs"),
-      where("userId", "==", currentUser.value.uid),
-      limit(1000)
-    );
-    const snap = await getDocs(q);
-    const logs = snap.docs.map((d) => d.data() as StudyLog);
-    const reviewMap = new Map<string, Question>();
-    logs.sort(
-      (a, b) => (a.createdAt?.toDate?.() || 0) - (b.createdAt?.toDate?.() || 0)
-    );
-    logs.forEach((log) => {
-      if (!log.question?.id) return;
-      if (!log.isCorrect || log.confidence !== "ok") {
-        reviewMap.set(log.question.id, {
-          ...log.question,
-          lastResult: {
-            isCorrect: log.isCorrect,
-            confidence: log.confidence,
-            userChoice: log.userChoice,
-            aiAdvice: log.aiAdvice,
-          },
-        });
-      } else {
-        reviewMap.delete(log.question.id);
-      }
-    });
-    reviewQuestions.value = Array.from(reviewMap.values()).reverse();
-  };
-
-  const fetchHistory = async () => {
-    if (!currentUser.value) return;
-    const q = query(
-      collection(db, "study_logs"),
-      where("userId", "==", currentUser.value.uid),
-      limit(100)
-    );
-    const snap = await getDocs(q);
-    studyLogs.value = snap.docs
-      .map(
-        (d) =>
-          ({
-            id: d.id,
-            ...d.data(),
-            createdAt: d.data().createdAt?.toDate() || new Date(),
-          } as StudyLog)
-      )
-      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-  };
-
-  const fetchBookmarks = async () => {
-    if (!currentUser.value) return;
-    const q = query(
-      collection(db, "bookmarks"),
-      where("userId", "==", currentUser.value.uid)
-    );
-    const snap = await getDocs(q);
-    bookmarkedQuestions.value = snap.docs.map(
-      (d) => d.data().question as Question
-    );
-    bookmarkedIds.value = new Set(snap.docs.map((d) => d.data().questionId));
-  };
-
-  const toggleBookmark = async (question: Question) => {
-    const uid = currentUser.value?.uid;
-    if (!uid) return;
-    if (bookmarkedIds.value.has(question.id)) {
-      bookmarkedIds.value.delete(question.id);
-      const q = query(
-        collection(db, "bookmarks"),
-        where("userId", "==", uid),
-        where("questionId", "==", question.id)
-      );
-      const s = await getDocs(q);
-      s.forEach((d) => deleteDoc(d.ref));
-    } else {
-      bookmarkedIds.value.add(question.id);
-      await addDoc(collection(db, "bookmarks"), {
-        userId: uid,
-        questionId: question.id,
-        question,
-        createdAt: serverTimestamp(),
-      });
-    }
-    await fetchBookmarks();
-  };
-
-  const saveAnswer = async (
-    q: Question,
-    choice: number,
-    isCorrect: boolean,
-    confidence: any
-  ) => {
-    const uid = currentUser.value?.uid;
-    if (!uid) return;
-
-    q.lastResult = { isCorrect, confidence, userChoice: [choice] };
-    saveSession();
-
-    const expGained = isCorrect ? 20 : 5;
-    const logRef = await addDoc(collection(db, "study_logs"), {
-      userId: uid,
-      questionId: q.id,
-      question: q,
-      userChoice: [choice],
-      isCorrect,
-      confidence,
-      createdAt: serverTimestamp(),
-    });
-
-    lastLogId.value = logRef.id;
-
-    try {
-      const userRef = doc(db, "users", uid);
-      await setDoc(
-        userRef,
-        {
-          email: currentUser.value?.email,
-          totalExp: increment(expGained),
-          lastActiveAt: serverTimestamp(),
-          displayName: currentUser.value?.displayName || null,
-          photoURL: currentUser.value?.photoURL || null,
-          role: currentUser.value?.role || "student",
-        },
-        { merge: true }
-      );
-
-      if (currentUser.value) {
-        currentUser.value.totalExp =
-          (currentUser.value.totalExp || 0) + expGained;
-      }
-    } catch (e) {
-      console.error("Exp update failed", e);
-    }
-
-    fetchReviewQuestions();
-    fetchHistory();
-  };
-
-  const goToNext = () => {
-    currentSessionIndex.value++;
-    aiResponse.value = "";
-    lastLogId.value = null;
-    saveSession();
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  // ★★★ AI解説リクエスト（完全無料・無制限版） ★★★
-  const askAI = async (q: Question): Promise<boolean> => {
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-    if (!apiKey) {
-      aiResponse.value = "APIキー未設定";
-      return false;
-    }
-    if (!currentUser.value) return false;
-
-    // 既に回答があれば表示
-    if (q.lastResult?.aiAdvice) {
-      aiResponse.value = q.lastResult.aiAdvice;
-      return true;
-    }
-
-    // 思考中フラグON
-    isAiThinking.value = true;
-    aiResponse.value = "";
-
-    try {
-      // --- モデルリスト取得ロジック ---
-      const listUrl = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`;
-      const listResponse = await fetch(listUrl);
-      const listData = await listResponse.json();
-      const generationModels = (listData.models || []).filter((m: any) =>
-        m.supportedGenerationMethods?.includes("generateContent")
-      );
-      const flash = generationModels.find((m: any) =>
-        m.name.includes("gemini-1.5-flash")
-      );
-      const targetModel = (flash || generationModels[0])?.name.replace(
-        "models/",
-        ""
-      );
-      // ------------------------------------------------
-
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: targetModel });
-      const prompt = `あなたは看護学生の学習をサポートする優しい専属チューターです。
-      問題「${q.text}」に対し、なぜ正解が ${q.correctIndices.map(
-        (i) => i + 1
-      )} 番なのか、
-      他の選択肢がなぜ間違いなのかを、学生が覚えやすいように噛み砕いて解説してください。
-      また、この問題に関連する「重要ポイント」も1つ教えてください。`;
-
-      const res = await model.generateContent(prompt);
-      const text = res.response.text();
-
-      // ★★★ 思考完了・タイプライター演出開始 ★★★
-      isAiThinking.value = false;
-
-      const chars = text.split("");
-      for (const char of chars) {
-        aiResponse.value += char;
-        await new Promise((resolve) => setTimeout(resolve, 20));
-      }
-
-      if (lastLogId.value) {
-        await updateDoc(doc(db, "study_logs", lastLogId.value), {
-          aiAdvice: text,
-        });
-      }
-      if (q.lastResult) q.lastResult.aiAdvice = text;
-
-      return true;
-    } catch (e: any) {
-      isAiThinking.value = false;
-      aiResponse.value = "AIエラー: " + e.message;
-      return true;
-    }
-  };
-
-  const cleanupDuplicates = async () => {
-    if (!confirm("重複を削除しますか？")) return;
-    loading.value = true;
-    try {
-      const seen = new Set();
-      const toDeleteIds: string[] = [];
-      masterQuestions.value.forEach((q) => {
-        const key = `${q.examYear}-${q.questionNumber}`;
-        if (seen.has(key)) {
-          toDeleteIds.push(q.id);
-        } else {
-          seen.add(key);
-        }
-      });
-      if (toDeleteIds.length === 0) return;
-      for (const id of toDeleteIds) {
-        await deleteDoc(doc(db, "questions", id));
-      }
-      window.location.reload();
-    } catch (e: any) {
-      alert("Error: " + e.message);
-    } finally {
-      loading.value = false;
-    }
-  };
-
-  const fetchQuestions = async (
-    options: {
-      force?: boolean;
-      mode?: "random100" | "examYear";
-      year?: string;
-      period?: "am" | "pm";
-    } = {}
-  ) => {
-    if (!options.force && restoreSession()) return;
-    loading.value = true;
-    try {
-      await fetchAllQuestions();
-      let list = [...masterQuestions.value];
-
-      if (options.mode === "examYear" && options.year) {
-        list = list.filter((q) => q.examYear === options.year);
-      }
-
-      const activePeriod = options.period || selectedPeriod.value;
-      if (activePeriod === "am")
-        list = list.filter((q) => q.questionNumber?.includes("午前"));
-      else if (activePeriod === "pm")
-        list = list.filter((q) => q.questionNumber?.includes("午後"));
-
-      if (options.mode === "random100") {
-        list.sort(() => Math.random() - 0.5);
-        list = list.slice(0, 100);
-      } else if (options.mode === "examYear") {
-        list.sort((a, b) =>
-          a.questionNumber.localeCompare(b.questionNumber, undefined, {
-            numeric: true,
-          })
-        );
-      } else {
-        list.sort(() => Math.random() - 0.5);
-      }
-
-      questions.value = list;
-      currentSessionIndex.value = 0;
-      saveSession();
-    } finally {
-      loading.value = false;
-    }
-  };
-
-  const fetchRanking = async () => {
-    loading.value = true;
-    try {
-      const q = query(
-        collection(db, "users"),
-        orderBy("totalExp", "desc"),
-        limit(50)
-      );
-      const snap = await getDocs(q);
-      rankingList.value = snap.docs.map((d) => {
-        const data = d.data();
-        return {
-          uid: d.id,
-          email: data.email || "",
-          role: data.role || "student",
-          createdAt: data.createdAt,
-          ...data,
-        } as User;
-      });
-    } catch (e) {
-      console.error("Ranking fetch error", e);
-    } finally {
-      loading.value = false;
-    }
-  };
-
-  const setSessionResult = (correct: number, total: number) => {
-    if (total === 0) return;
-    const rate = Math.round((correct / total) * 100);
-    let judge = "";
-    let judgeText = "";
-
-    if (rate >= 90) {
-      judge = "S";
-      judgeText = "素晴らしい！完璧に近い仕上がりです✨";
-    } else if (rate >= 80) {
-      judge = "A";
-      judgeText = "合格安全圏です！この調子でいきましょう🌸";
-    } else if (rate >= 60) {
-      judge = "B";
-      judgeText = "合格ライン付近です。苦手分野を見直しましょう💪";
-    } else {
-      judge = "C";
-      judgeText = "要復習です。間違えた問題をしっかり見直しましょう📚";
-    }
-    sessionResult.value = { correct, total, rate, judge, judgeText };
-  };
-
-  const finishSession = () => {
-    const total = questions.value.length;
-    const correct = questions.value.filter(
-      (q) => q.lastResult?.isCorrect
-    ).length;
-    setSessionResult(correct, total);
-  };
-
-  return {
-    currentUser,
-    masterQuestions,
-    questions,
-    questionStats,
-    dbHealthReport,
-    reviewQuestions,
-    bookmarkedQuestions,
-    bookmarkedIds,
-    studyLogs,
-    loading,
-    totalExp,
-    currentLevel,
-    levelProgress,
-    currentRank,
-    selectedPeriod,
-    currentSessionIndex,
-    aiResponse,
-    isAiThinking,
-    sessionResult,
-    rankingList,
-    lastLogId,
-    initAuth: () =>
-      onAuthStateChanged(auth, async (user) => {
-        if (user) {
-          const snap = await getDoc(doc(db, "users", user.uid));
-          if (snap.exists()) {
-            const userData = snap.data();
-            currentUser.value = {
-              uid: user.uid,
-              email: userData.email || user.email || "",
-              role: userData.role || "student",
-              createdAt: userData.createdAt,
-              displayName: userData.displayName,
-              photoURL: userData.photoURL,
-              totalExp: userData.totalExp || 0,
-              lastActiveAt: userData.lastActiveAt,
-              isPremium: true, // 常にプレミアムとして扱う（UI調整用）
-              aiUsage: { count: 0, lastUsedAt: null },
-            } as User;
-          } else {
-            currentUser.value = {
-              uid: user.uid,
-              email: user.email || "",
-              role: "student",
-              createdAt: new Date(),
-              totalExp: 0,
-              isPremium: true,
-              aiUsage: { count: 0, lastUsedAt: null },
-            } as User;
-          }
-
-          await Promise.all([
-            fetchAllQuestions(),
-            fetchHistory(),
-            fetchReviewQuestions(),
-            fetchBookmarks(),
-          ]);
-        } else {
-          currentUser.value = null;
-        }
-      }),
-    fetchQuestions,
-    fetchAllQuestions,
-    fetchReviewQuestions,
-    fetchHistory,
-    fetchBookmarks,
-    toggleBookmark,
-    saveAnswer,
-    askAI,
-    clearSession,
-    goToNext,
-    cleanupDuplicates,
-    setSessionResult,
-    finishSession,
-    fetchRanking,
-    logout: async () => {
-      clearSession();
-      await signOut(auth);
-      window.location.reload();
-    },
-  };
-}
 </file>
 
 <file path="src/components/QuizCard/QuizCard.vue">
@@ -7906,6 +7278,647 @@ const correctAnswerLabel = computed(() => {
 </style>
 </file>
 
+<file path="src/composables/useNextNs.ts">
+import { ref, computed } from "vue";
+import { db, auth } from "@/firebase";
+import {
+  doc,
+  getDoc,
+  collection,
+  query,
+  limit,
+  getDocs,
+  addDoc,
+  deleteDoc,
+  updateDoc,
+  setDoc,
+  increment,
+  orderBy,
+  serverTimestamp,
+  where,
+} from "firebase/firestore";
+import { onAuthStateChanged, signOut } from "firebase/auth";
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import type { Question, User, StudyLog } from "@/types";
+
+// 保存キーの定義
+const STORAGE_KEY_SESSION = "nextns_session_questions";
+const STORAGE_KEY_INDEX = "nextns_session_index";
+const STORAGE_KEY_PERIOD = "nextns_session_period";
+const STORAGE_KEY_MODE = "nextns_session_mode";
+const STORAGE_KEY_YEAR = "nextns_session_year";
+
+// --- グローバルステート ---
+const currentUser = ref<User | null>(null);
+const masterQuestions = ref<Question[]>([]);
+const questions = ref<Question[]>([]);
+const reviewQuestions = ref<Question[]>([]);
+const bookmarkedQuestions = ref<Question[]>([]);
+const bookmarkedIds = ref<Set<string>>(new Set());
+const studyLogs = ref<StudyLog[]>([]);
+const loading = ref(false);
+
+const currentSessionIndex = ref(0);
+const selectedPeriod = ref<"all" | "am" | "pm">("all");
+
+// 現在のセッション設定を保持するステート
+const sessionMode = ref<"random100" | "examYear" | null>(null);
+const sessionYear = ref<string | null>(null);
+
+// 結果画面用ステート
+const sessionResult = ref<{
+  correct: number;
+  total: number;
+  rate: number;
+  judge: string;
+  judgeText: string;
+} | null>(null);
+
+// ランキングデータ
+const rankingList = ref<User[]>([]);
+
+// 最新の学習ログID（AI解説保存用）
+const lastLogId = ref<string | null>(null);
+
+// ログから算出する一時的な経験値（表示用）
+const totalExp = computed(() =>
+  studyLogs.value.reduce((t, log) => t + (log.isCorrect ? 20 : 5), 0)
+);
+
+const currentLevel = computed(() => {
+  const exp = currentUser.value?.totalExp || totalExp.value;
+  return Math.floor(exp / 100) + 1;
+});
+
+const levelProgress = computed(() => {
+  const exp = currentUser.value?.totalExp || totalExp.value;
+  return exp % 100;
+});
+
+const currentRank = computed(() => {
+  const lv = currentLevel.value;
+  if (lv < 5) return "新人ナースの卵";
+  if (lv < 10) return "駆け出しナース";
+  if (lv < 20) return "中堅ナース";
+  return "ベテランナース";
+});
+
+const questionStats = computed(() => {
+  const stats: Record<string, { am: number; pm: number; total: number }> = {};
+  masterQuestions.value.forEach((q) => {
+    const year = q.examYear || "不明";
+    if (!stats[year]) stats[year] = { am: 0, pm: 0, total: 0 };
+    stats[year].total++;
+    if (q.questionNumber?.includes("午前")) stats[year].am++;
+    else if (q.questionNumber?.includes("午後")) stats[year].pm++;
+  });
+  return Object.entries(stats)
+    .map(([year, data]) => ({ year, ...data }))
+    .sort((a, b) => b.year.localeCompare(a.year, undefined, { numeric: true }));
+});
+
+const dbHealthReport = computed(() => {
+  const report: Record<
+    string,
+    { missingAm: string[]; missingPm: string[]; duplicates: string[] }
+  > = {};
+  const grouped = masterQuestions.value.reduce((acc, q) => {
+    const key = q.examYear || "不明";
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(q.questionNumber);
+    return acc;
+  }, {} as Record<string, string[]>);
+
+  Object.entries(grouped).forEach(([year, nums]) => {
+    const am = nums.filter((n) => n.includes("午前"));
+    const pm = nums.filter((n) => n.includes("午後"));
+    const missingAm = [];
+    const missingPm = [];
+    for (let i = 1; i <= 120; i++) {
+      if (!am.includes(`午前${i}`)) missingAm.push(`午前${i}`);
+      if (!pm.includes(`午後${i}`)) missingPm.push(`午後${i}`);
+    }
+    const duplicates = nums.filter(
+      (item, index) => nums.indexOf(item) !== index
+    );
+    report[year] = {
+      missingAm,
+      missingPm,
+      duplicates: [...new Set(duplicates)],
+    };
+  });
+  return report;
+});
+
+export function useNextNs() {
+  const aiResponse = ref("");
+  const isAiThinking = ref(false);
+
+  const saveSession = () => {
+    if (questions.value.length > 0) {
+      localStorage.setItem(
+        STORAGE_KEY_SESSION,
+        JSON.stringify(questions.value)
+      );
+      localStorage.setItem(
+        STORAGE_KEY_INDEX,
+        String(currentSessionIndex.value)
+      );
+      localStorage.setItem(STORAGE_KEY_PERIOD, selectedPeriod.value);
+      localStorage.setItem(STORAGE_KEY_MODE, sessionMode.value || "");
+      localStorage.setItem(STORAGE_KEY_YEAR, sessionYear.value || "");
+    }
+  };
+
+  const restoreSession = () => {
+    const saved = localStorage.getItem(STORAGE_KEY_SESSION);
+    const idx = localStorage.getItem(STORAGE_KEY_INDEX);
+    const prd = localStorage.getItem(STORAGE_KEY_PERIOD);
+    const mode = localStorage.getItem(STORAGE_KEY_MODE);
+    const year = localStorage.getItem(STORAGE_KEY_YEAR);
+
+    if (saved && idx) {
+      try {
+        questions.value = JSON.parse(saved);
+        currentSessionIndex.value = parseInt(idx, 10);
+        if (prd) selectedPeriod.value = prd as any;
+        if (mode) sessionMode.value = mode as any;
+        if (year) sessionYear.value = year;
+        return true;
+      } catch (e) {
+        return false;
+      }
+    }
+    return false;
+  };
+
+  const clearSession = () => {
+    localStorage.removeItem(STORAGE_KEY_SESSION);
+    localStorage.removeItem(STORAGE_KEY_INDEX);
+    localStorage.removeItem(STORAGE_KEY_PERIOD);
+    localStorage.removeItem(STORAGE_KEY_MODE);
+    localStorage.removeItem(STORAGE_KEY_YEAR);
+    currentSessionIndex.value = 0;
+    sessionMode.value = null;
+    sessionYear.value = null;
+  };
+
+  const fetchAllQuestions = async () => {
+    if (masterQuestions.value.length > 0) return;
+    loading.value = true;
+    try {
+      const q = query(collection(db, "questions"), limit(5000));
+      const snap = await getDocs(q);
+      masterQuestions.value = snap.docs.map(
+        (d) => ({ id: d.id, ...d.data() } as Question)
+      );
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const fetchReviewQuestions = async () => {
+    if (!currentUser.value) return;
+    const q = query(
+      collection(db, "study_logs"),
+      where("userId", "==", currentUser.value.uid),
+      limit(1000)
+    );
+    const snap = await getDocs(q);
+    const logs = snap.docs.map((d) => d.data() as StudyLog);
+    const reviewMap = new Map<string, Question>();
+    logs.sort(
+      (a, b) => (a.createdAt?.toDate?.() || 0) - (b.createdAt?.toDate?.() || 0)
+    );
+    logs.forEach((log) => {
+      if (!log.question?.id) return;
+      if (!log.isCorrect || log.confidence !== "ok") {
+        reviewMap.set(log.question.id, {
+          ...log.question,
+          lastResult: {
+            isCorrect: log.isCorrect,
+            confidence: log.confidence,
+            userChoice: log.userChoice,
+            aiAdvice: log.aiAdvice,
+          },
+        });
+      } else {
+        reviewMap.delete(log.question.id);
+      }
+    });
+    reviewQuestions.value = Array.from(reviewMap.values()).reverse();
+  };
+
+  const fetchHistory = async () => {
+    if (!currentUser.value) return;
+    const q = query(
+      collection(db, "study_logs"),
+      where("userId", "==", currentUser.value.uid),
+      limit(100)
+    );
+    const snap = await getDocs(q);
+    studyLogs.value = snap.docs
+      .map(
+        (d) =>
+          ({
+            id: d.id,
+            ...d.data(),
+            createdAt: d.data().createdAt?.toDate() || new Date(),
+          } as StudyLog)
+      )
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  };
+
+  const fetchBookmarks = async () => {
+    if (!currentUser.value) return;
+    const q = query(
+      collection(db, "bookmarks"),
+      where("userId", "==", currentUser.value.uid)
+    );
+    const snap = await getDocs(q);
+    bookmarkedQuestions.value = snap.docs.map(
+      (d) => d.data().question as Question
+    );
+    bookmarkedIds.value = new Set(snap.docs.map((d) => d.data().questionId));
+  };
+
+  const toggleBookmark = async (question: Question) => {
+    const uid = currentUser.value?.uid;
+    if (!uid) return;
+    if (bookmarkedIds.value.has(question.id)) {
+      bookmarkedIds.value.delete(question.id);
+      const q = query(
+        collection(db, "bookmarks"),
+        where("userId", "==", uid),
+        where("questionId", "==", question.id)
+      );
+      const s = await getDocs(q);
+      s.forEach((d) => deleteDoc(d.ref));
+    } else {
+      bookmarkedIds.value.add(question.id);
+      await addDoc(collection(db, "bookmarks"), {
+        userId: uid,
+        questionId: question.id,
+        question,
+        createdAt: serverTimestamp(),
+      });
+    }
+    await fetchBookmarks();
+  };
+
+  const saveAnswer = async (
+    q: Question,
+    choice: number,
+    isCorrect: boolean,
+    confidence: any
+  ) => {
+    const uid = currentUser.value?.uid;
+    if (!uid) return;
+
+    q.lastResult = { isCorrect, confidence, userChoice: [choice] };
+    saveSession();
+
+    const expGained = isCorrect ? 20 : 5;
+
+    // ★修正: どのモードで解いたかの情報をログに追加保存する
+    const logRef = await addDoc(collection(db, "study_logs"), {
+      userId: uid,
+      questionId: q.id,
+      question: q,
+      userChoice: [choice],
+      isCorrect,
+      confidence,
+      createdAt: serverTimestamp(),
+      mode: sessionMode.value || "unknown", // 'random100' か 'examYear' か
+      targetYear: sessionYear.value || null, // '第113回' など
+    });
+
+    lastLogId.value = logRef.id;
+
+    try {
+      const userRef = doc(db, "users", uid);
+      await setDoc(
+        userRef,
+        {
+          email: currentUser.value?.email,
+          totalExp: increment(expGained),
+          lastActiveAt: serverTimestamp(),
+          displayName: currentUser.value?.displayName || null,
+          photoURL: currentUser.value?.photoURL || null,
+          role: currentUser.value?.role || "student",
+        },
+        { merge: true }
+      );
+
+      if (currentUser.value) {
+        currentUser.value.totalExp =
+          (currentUser.value.totalExp || 0) + expGained;
+      }
+    } catch (e) {
+      console.error("Exp update failed", e);
+    }
+
+    fetchReviewQuestions();
+    fetchHistory();
+  };
+
+  const goToNext = () => {
+    currentSessionIndex.value++;
+    aiResponse.value = "";
+    lastLogId.value = null;
+    saveSession();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const askAI = async (q: Question): Promise<boolean> => {
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+    if (!apiKey) {
+      aiResponse.value = "APIキー未設定";
+      return false;
+    }
+    if (!currentUser.value) return false;
+
+    if (q.lastResult?.aiAdvice) {
+      aiResponse.value = q.lastResult.aiAdvice;
+      return true;
+    }
+
+    isAiThinking.value = true;
+    aiResponse.value = "";
+
+    try {
+      const listUrl = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`;
+      const listResponse = await fetch(listUrl);
+      const listData = await listResponse.json();
+      const generationModels = (listData.models || []).filter((m: any) =>
+        m.supportedGenerationMethods?.includes("generateContent")
+      );
+      const flash = generationModels.find((m: any) =>
+        m.name.includes("gemini-1.5-flash")
+      );
+      const targetModel = (flash || generationModels[0])?.name.replace(
+        "models/",
+        ""
+      );
+
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: targetModel });
+      const prompt = `あなたは看護学生の学習をサポートする優しい専属チューターです。
+      問題「${q.text}」に対し、なぜ正解が ${q.correctIndices.map(
+        (i) => i + 1
+      )} 番なのか、
+      他の選択肢がなぜ間違いなのかを、学生が覚えやすいように噛み砕いて解説してください。
+      また、この問題に関連する「重要ポイント」も1つ教えてください。`;
+
+      const res = await model.generateContent(prompt);
+      const text = res.response.text();
+
+      isAiThinking.value = false;
+
+      const chars = text.split("");
+      for (const char of chars) {
+        aiResponse.value += char;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+
+      if (lastLogId.value) {
+        await updateDoc(doc(db, "study_logs", lastLogId.value), {
+          aiAdvice: text,
+        });
+      }
+      if (q.lastResult) q.lastResult.aiAdvice = text;
+
+      return true;
+    } catch (e: any) {
+      isAiThinking.value = false;
+      aiResponse.value = "AIエラー: " + e.message;
+      return true;
+    }
+  };
+
+  const cleanupDuplicates = async () => {
+    if (!confirm("重複を削除しますか？")) return;
+    loading.value = true;
+    try {
+      const seen = new Set();
+      const toDeleteIds: string[] = [];
+      masterQuestions.value.forEach((q) => {
+        const key = `${q.examYear}-${q.questionNumber}`;
+        if (seen.has(key)) {
+          toDeleteIds.push(q.id);
+        } else {
+          seen.add(key);
+        }
+      });
+      if (toDeleteIds.length === 0) return;
+      for (const id of toDeleteIds) {
+        await deleteDoc(doc(db, "questions", id));
+      }
+      window.location.reload();
+    } catch (e: any) {
+      alert("Error: " + e.message);
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const fetchQuestions = async (
+    options: {
+      force?: boolean;
+      mode?: "random100" | "examYear";
+      year?: string;
+      period?: "am" | "pm";
+    } = {}
+  ) => {
+    if (!options.force && restoreSession()) return;
+
+    loading.value = true;
+    try {
+      await fetchAllQuestions();
+      let list = [...masterQuestions.value];
+
+      const activeMode = options.mode || sessionMode.value;
+      const activeYear = options.year || sessionYear.value;
+      const activePeriod = options.period || selectedPeriod.value;
+
+      if (activeMode === "examYear" && activeYear) {
+        list = list.filter((q) => q.examYear === activeYear);
+      }
+
+      if (activePeriod === "am")
+        list = list.filter((q) => q.questionNumber?.includes("午前"));
+      else if (activePeriod === "pm")
+        list = list.filter((q) => q.questionNumber?.includes("午後"));
+
+      if (activeMode === "random100") {
+        list.sort(() => Math.random() - 0.5);
+        list = list.slice(0, 100);
+      } else if (activeMode === "examYear") {
+        list.sort((a, b) =>
+          a.questionNumber.localeCompare(b.questionNumber, undefined, {
+            numeric: true,
+          })
+        );
+      } else {
+        list.sort(() => Math.random() - 0.5);
+      }
+
+      questions.value = list;
+      if (options.force) {
+        currentSessionIndex.value = 0;
+        sessionMode.value = activeMode || null;
+        sessionYear.value = activeYear || null;
+      }
+
+      saveSession();
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const fetchRanking = async () => {
+    loading.value = true;
+    try {
+      const q = query(
+        collection(db, "users"),
+        orderBy("totalExp", "desc"),
+        limit(50)
+      );
+      const snap = await getDocs(q);
+      rankingList.value = snap.docs.map((d) => {
+        const data = d.data();
+        return {
+          uid: d.id,
+          email: data.email || "",
+          role: data.role || "student",
+          createdAt: data.createdAt,
+          ...data,
+        } as User;
+      });
+    } catch (e) {
+      console.error("Ranking fetch error", e);
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const setSessionResult = (correct: number, total: number) => {
+    if (total === 0) return;
+    const rate = Math.round((correct / total) * 100);
+    let judge = "";
+    let judgeText = "";
+
+    if (rate >= 90) {
+      judge = "S";
+      judgeText = "素晴らしい！完璧に近い仕上がりです✨";
+    } else if (rate >= 80) {
+      judge = "A";
+      judgeText = "合格安全圏です！この調子でいきましょう🌸";
+    } else if (rate >= 60) {
+      judge = "B";
+      judgeText = "合格ライン付近です。苦手分野を見直しましょう💪";
+    } else {
+      judge = "C";
+      judgeText = "要復習です。間違えた問題をしっかり見直しましょう📚";
+    }
+    sessionResult.value = { correct, total, rate, judge, judgeText };
+  };
+
+  const finishSession = () => {
+    const total = questions.value.length;
+    const correct = questions.value.filter(
+      (q) => q.lastResult?.isCorrect
+    ).length;
+    setSessionResult(correct, total);
+  };
+
+  return {
+    currentUser,
+    masterQuestions,
+    questions,
+    questionStats,
+    dbHealthReport,
+    reviewQuestions,
+    bookmarkedQuestions,
+    bookmarkedIds,
+    studyLogs,
+    loading,
+    totalExp,
+    currentLevel,
+    levelProgress,
+    currentRank,
+    selectedPeriod,
+    currentSessionIndex,
+    aiResponse,
+    isAiThinking,
+    sessionResult,
+    rankingList,
+    lastLogId,
+    sessionMode,
+    sessionYear,
+    initAuth: () =>
+      onAuthStateChanged(auth, async (user) => {
+        if (user) {
+          const snap = await getDoc(doc(db, "users", user.uid));
+          if (snap.exists()) {
+            const userData = snap.data();
+            currentUser.value = {
+              uid: user.uid,
+              email: userData.email || user.email || "",
+              role: userData.role || "student",
+              createdAt: userData.createdAt,
+              displayName: userData.displayName,
+              photoURL: userData.photoURL,
+              totalExp: userData.totalExp || 0,
+              lastActiveAt: userData.lastActiveAt,
+              isPremium: true,
+              aiUsage: { count: 0, lastUsedAt: null },
+            } as User;
+          } else {
+            currentUser.value = {
+              uid: user.uid,
+              email: user.email || "",
+              role: "student",
+              createdAt: new Date(),
+              totalExp: 0,
+              isPremium: true,
+              aiUsage: { count: 0, lastUsedAt: null },
+            } as User;
+          }
+
+          await Promise.all([
+            fetchAllQuestions(),
+            fetchHistory(),
+            fetchReviewQuestions(),
+            fetchBookmarks(),
+          ]);
+        } else {
+          currentUser.value = null;
+        }
+      }),
+    fetchQuestions,
+    fetchAllQuestions,
+    fetchReviewQuestions,
+    fetchHistory,
+    fetchBookmarks,
+    toggleBookmark,
+    saveAnswer,
+    askAI,
+    clearSession,
+    goToNext,
+    cleanupDuplicates,
+    setSessionResult,
+    finishSession,
+    fetchRanking,
+    logout: async () => {
+      clearSession();
+      await signOut(auth);
+      window.location.reload();
+    },
+  };
+}
+</file>
+
 <file path="src/router/index.ts">
 import { createRouter, createWebHistory } from "vue-router";
 import { getAuth, onAuthStateChanged, type User } from "firebase/auth";
@@ -8031,6 +8044,7 @@ export default router;
 <template>
   <div class="h-screen flex flex-col bg-slate-50 font-sans">
     <header
+      v-if="currentTab !== 'ranking'"
       class="bg-white px-6 py-6 shadow-sm border-b border-slate-100 flex justify-between items-center flex-shrink-0 z-30"
     >
       <h1
@@ -8046,12 +8060,31 @@ export default router;
       </button>
     </header>
 
-    <main class="flex-1 overflow-y-auto no-scrollbar pb-32">
-      <div class="max-w-md mx-auto mt-8 space-y-8">
-        <div
-          v-if="currentTab === 'home'"
-          class="space-y-8 px-6 animate-fade-in"
-        >
+    <main
+      class="flex-1 overflow-y-auto no-scrollbar"
+      :class="currentTab === 'ranking' ? 'pb-24 p-0' : 'pb-32 px-6 pt-8'"
+    >
+      <div class="max-w-md mx-auto h-full">
+        <div v-if="currentTab === 'home'" class="space-y-8 animate-fade-in">
+          <div v-if="hasResumeData" class="animate-fade-in">
+            <button
+              @click="$router.push('/study')"
+              class="w-full bg-slate-800 text-white p-4 rounded-3xl shadow-lg flex items-center justify-between group active:scale-95 transition"
+            >
+              <div class="text-left">
+                <p
+                  class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-1"
+                >
+                  RESUME
+                </p>
+                <p class="font-bold">前回の続きから再開する</p>
+              </div>
+              <span class="text-2xl group-hover:translate-x-1 transition"
+                >▶</span
+              >
+            </button>
+          </div>
+
           <div
             class="bg-blue-600 rounded-[32px] p-6 text-white shadow-xl shadow-blue-200"
           >
@@ -8084,17 +8117,33 @@ export default router;
           <button
             @click="$router.push('/mock-exam')"
             class="w-full bg-gradient-to-r from-orange-500 to-red-500 rounded-3xl p-6 text-white shadow-xl shadow-orange-200 relative overflow-hidden group active:scale-95 transition"
+            :class="{
+              'animate-pulse ring-4 ring-orange-300 ring-offset-2':
+                shouldNotifyMock,
+            }"
           >
             <div class="relative z-10 flex justify-between items-center">
               <div>
-                <span
-                  class="bg-white/20 text-white text-[10px] font-bold px-2 py-0.5 rounded-full border border-white/20 mb-2 inline-block"
-                >
-                  EVENT
-                </span>
+                <div class="flex items-center gap-2 mb-2">
+                  <span
+                    class="bg-white/20 text-white text-[10px] font-bold px-2 py-0.5 rounded-full border border-white/20 inline-block"
+                  >
+                    EVENT
+                  </span>
+                  <span
+                    v-if="shouldNotifyMock"
+                    class="bg-yellow-400 text-orange-900 text-[10px] font-black px-2 py-0.5 rounded-full animate-bounce"
+                  >
+                    NOW OPEN!
+                  </span>
+                </div>
                 <h3 class="font-black text-xl">全国統一模試</h3>
                 <p class="text-xs font-bold text-orange-100 mt-1">
-                  実力を試して判定をチェック！
+                  {{
+                    shouldNotifyMock
+                      ? "⚠️ まだ回答していません！"
+                      : "実力を試して判定をチェック！"
+                  }}
                 </p>
               </div>
               <div class="text-4xl group-hover:scale-110 transition">📊</div>
@@ -8152,19 +8201,116 @@ export default router;
             </div>
           </div>
 
+          <div
+            class="bg-white rounded-3xl pt-5 pb-2 px-2 border border-slate-100 shadow-sm"
+          >
+            <div class="flex items-center gap-2 mb-4 px-3">
+              <span class="text-xl">📚</span>
+              <div>
+                <h2 class="font-black text-slate-800 text-sm">
+                  出題年度を選択
+                </h2>
+                <p class="text-[10px] text-slate-400">
+                  ※合格基準点と比較して判定します
+                </p>
+              </div>
+            </div>
+
+            <div class="divide-y divide-slate-100">
+              <div
+                v-for="stat in yearStatsList"
+                :key="stat.year"
+                class="flex items-center justify-between p-3 hover:bg-slate-50 transition active:scale-[0.98] cursor-pointer rounded-xl group"
+                @click="openYearModal(stat.year)"
+              >
+                <div class="flex-shrink-0">
+                  <p class="font-black text-slate-700">{{ stat.year }}</p>
+                  <div v-if="stat.totalScore > 0" class="mt-1">
+                    <span
+                      v-if="stat.isPassed"
+                      class="text-[10px] font-bold bg-green-100 text-green-600 px-2 py-0.5 rounded-full border border-green-200"
+                    >
+                      💮 合格圏
+                    </span>
+                    <span
+                      v-else
+                      class="text-[10px] font-bold bg-red-100 text-red-600 px-2 py-0.5 rounded-full border border-red-200"
+                    >
+                      ⚠️ 要復習
+                    </span>
+                  </div>
+                  <div v-else class="mt-1">
+                    <span
+                      class="text-[10px] font-bold text-slate-300 bg-slate-100 px-2 py-0.5 rounded-full"
+                    >
+                      未回答
+                    </span>
+                  </div>
+                </div>
+
+                <div class="text-right flex-1 mx-4">
+                  <div class="flex justify-end items-baseline gap-1 mb-1">
+                    <span class="text-[10px] text-slate-400 font-bold"
+                      >解答済</span
+                    >
+                    <span class="font-black text-slate-700">{{
+                      stat.answeredCount
+                    }}</span>
+                    <span class="text-[10px] text-slate-400"
+                      >/ {{ stat.totalCount }}問</span
+                    >
+                  </div>
+
+                  <div class="flex justify-end gap-3 text-[10px] font-bold">
+                    <div
+                      :class="
+                        stat.mandatoryScore >= stat.border.mandatory
+                          ? 'text-green-600'
+                          : 'text-red-500'
+                      "
+                    >
+                      必修 <span class="text-sm">{{ stat.mandatoryScore }}</span
+                      >点
+                      <span class="text-[9px] text-slate-400 opacity-70"
+                        >/{{ stat.border.mandatory }}</span
+                      >
+                    </div>
+                    <div
+                      :class="
+                        stat.generalScore >= stat.border.general
+                          ? 'text-green-600'
+                          : 'text-red-500'
+                      "
+                    >
+                      一般 <span class="text-sm">{{ stat.generalScore }}</span
+                      >点
+                      <span class="text-[9px] text-slate-400 opacity-70"
+                        >/{{ stat.border.general }}</span
+                      >
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  class="text-slate-300 group-hover:text-blue-500 transition text-sm"
+                >
+                  ›
+                </div>
+              </div>
+            </div>
+          </div>
+
           <template v-if="isAdmin">
             <div class="py-4 border-t border-slate-200 my-4">
               <p class="text-center text-xs font-bold text-red-500 mb-2">
                 👑 Administrator Zone
               </p>
-
               <button
                 @click="$router.push('/admin')"
                 class="w-full mb-4 py-3 bg-slate-800 text-white font-bold rounded-xl shadow-lg active:scale-95 transition"
               >
                 🛠️ 管理画面へ移動
               </button>
-
               <section
                 class="bg-white rounded-3xl p-5 border border-slate-100 shadow-sm"
               >
@@ -8181,85 +8327,44 @@ export default router;
                     重複を一括削除
                   </button>
                 </div>
-
-                <div class="space-y-6">
+                <div class="space-y-2">
                   <div
                     v-for="stat in questionStats"
-                    :key="stat.year"
-                    class="p-4 bg-slate-50 rounded-2xl border border-slate-100"
+                    :key="'admin-' + stat.year"
+                    class="text-[10px] border-b border-slate-50 last:border-0 pb-2"
                   >
-                    <div class="flex justify-between items-center mb-2">
-                      <span class="font-black text-slate-800">{{
-                        stat.year
-                      }}</span>
+                    <div class="flex justify-between font-bold mb-1">
+                      <span>{{ stat.year }}</span>
                       <span
-                        class="text-[10px] font-bold"
                         :class="
                           stat.total === 240 ? 'text-green-500' : 'text-red-500'
                         "
                       >
-                        {{ stat.total }} / 240問
+                        {{ stat.total }}/240
                       </span>
                     </div>
-
-                    <div
-                      v-if="dbHealthReport[stat.year]"
-                      class="space-y-2 mt-3 pt-3 border-t border-slate-200"
-                    >
+                    <div v-if="dbHealthReport[stat.year]">
                       <div
                         v-if="dbHealthReport[stat.year].missingAm.length > 0"
-                        class="text-[9px] text-red-500 leading-tight"
+                        class="text-red-500"
                       >
-                        <span class="font-bold underline">午前不足:</span>
+                        欠番(AM):
                         {{ dbHealthReport[stat.year].missingAm.join(", ") }}
                       </div>
                       <div
                         v-if="dbHealthReport[stat.year].missingPm.length > 0"
-                        class="text-[9px] text-red-500 leading-tight"
+                        class="text-red-500"
                       >
-                        <span class="font-bold underline">午後不足:</span>
+                        欠番(PM):
                         {{ dbHealthReport[stat.year].missingPm.join(", ") }}
                       </div>
                       <div
                         v-if="dbHealthReport[stat.year].duplicates.length > 0"
-                        class="text-[9px] text-orange-600 font-bold"
+                        class="text-orange-500"
                       >
-                        ⚠️ 重複あり:
+                        重複:
                         {{ dbHealthReport[stat.year].duplicates.join(", ") }}
                       </div>
-                      <div
-                        v-if="stat.total === 240"
-                        class="text-[9px] text-green-600 font-bold italic"
-                      >
-                        ✨ 整合性チェック完了
-                      </div>
-                    </div>
-
-                    <div class="grid grid-cols-2 gap-2 mt-4">
-                      <button
-                        @click="
-                          startStudy({
-                            mode: 'examYear',
-                            year: stat.year,
-                            period: 'am',
-                          })
-                        "
-                        class="py-2 bg-white border border-blue-100 rounded-xl text-[10px] font-black text-blue-600 hover:bg-blue-600 hover:text-white transition active:scale-95"
-                      >
-                        午前開始 ({{ stat.am }})
-                      </button>
-                      <button
-                        @click="
-                          startStudy({
-                            mode: 'examYear',
-                            year: stat.year,
-                            period: 'pm',
-                          })
-                        "
-                        class="py-2 bg-white border border-blue-100 rounded-xl text-[10px] font-black text-blue-600 hover:bg-blue-600 hover:text-white transition active:scale-95"
-                      >
-                        午後開始 ({{ stat.pm }})
-                      </button>
                     </div>
                   </div>
                 </div>
@@ -8268,13 +8373,16 @@ export default router;
           </template>
         </div>
 
-        <div v-else-if="currentTab === 'ranking'" class="animate-fade-in">
+        <div
+          v-else-if="currentTab === 'ranking'"
+          class="animate-fade-in h-full"
+        >
           <RankingView />
         </div>
 
         <div
           v-else-if="currentTab === 'history'"
-          class="animate-fade-in space-y-8 px-6 pb-20"
+          class="animate-fade-in space-y-8"
         >
           <MyPage />
 
@@ -8286,14 +8394,12 @@ export default router;
                 保存した問題 ({{ bookmarkedQuestions.length }})
               </h3>
             </div>
-
             <div
               v-if="bookmarkedQuestions.length === 0"
               class="text-center py-12 text-slate-400 text-xs font-bold bg-white rounded-3xl border-2 border-dashed border-slate-200"
             >
               保存された問題はまだありません
             </div>
-
             <div
               v-else
               class="space-y-4 max-h-[600px] overflow-y-auto no-scrollbar pr-1 p-1"
@@ -8318,13 +8424,11 @@ export default router;
                     保存解除
                   </button>
                 </div>
-
                 <p
                   class="text-sm font-bold text-slate-700 leading-relaxed line-clamp-2 mb-4"
                 >
                   {{ q.text }}
                 </p>
-
                 <div
                   class="flex justify-end items-center border-t border-slate-50 pt-3"
                 >
@@ -8349,6 +8453,37 @@ export default router;
       </div>
     </main>
 
+    <BaseModal ref="yearModalRef">
+      <div class="p-2">
+        <h3 class="text-lg font-black text-slate-800 mb-1 text-center">
+          {{ selectedYearForModal }}
+        </h3>
+        <p class="text-xs text-slate-400 text-center mb-6">
+          挑戦する時間帯を選択してください
+        </p>
+        <div class="space-y-3">
+          <button
+            @click="startYearExam('am')"
+            class="w-full py-4 bg-blue-50 text-blue-600 font-bold rounded-xl border-2 border-blue-100 hover:bg-blue-600 hover:text-white hover:border-blue-600 transition"
+          >
+            ☀️ 午前問題
+          </button>
+          <button
+            @click="startYearExam('pm')"
+            class="w-full py-4 bg-orange-50 text-orange-600 font-bold rounded-xl border-2 border-orange-100 hover:bg-orange-500 hover:text-white hover:border-orange-500 transition"
+          >
+            🌙 午後問題
+          </button>
+        </div>
+        <button
+          @click="yearModalRef?.close()"
+          class="mt-6 w-full py-3 text-slate-400 text-xs font-bold"
+        >
+          キャンセル
+        </button>
+      </div>
+    </BaseModal>
+
     <TheBottomNav v-model:currentTab="currentTab" class="z-40" />
   </div>
 </template>
@@ -8357,12 +8492,13 @@ export default router;
 import { ref, onMounted, computed } from "vue";
 import { useRouter } from "vue-router";
 import { useNextNs } from "@/composables/useNextNs";
+import { useMockExam } from "@/composables/useMockExam";
 import { useNotifications } from "@/composables/useNotifications";
-// JsonUploader の import は削除しました
 import TheBottomNav from "@/components/TheBottomNav/TheBottomNav.vue";
 import MyPage from "@/components/MyPage/MyPage.vue";
 import SettingsTab from "@/components/SettingsTab/SettingsTab.vue";
 import RankingView from "@/views/RankingView/RankingView.vue";
+import BaseModal from "@/uiParts/BaseModal/BaseModal.vue";
 
 const router = useRouter();
 const {
@@ -8381,23 +8517,106 @@ const {
   fetchQuestions,
   selectedPeriod,
   cleanupDuplicates,
+  studyLogs,
 } = useNextNs();
 
+const { activeExam, userSubmission, fetchLatestExam } = useMockExam();
 const { requestNotificationPermission } = useNotifications();
 
 const currentTab = ref("home");
+const hasResumeData = ref(false);
+const yearModalRef = ref<InstanceType<typeof BaseModal> | null>(null);
+const selectedYearForModal = ref("");
 
-// ★★★ ここにあなたのUIDを設定してください ★★★
 const ADMIN_UIDS = ["SyfPBfS5D3VMktj2cEzXCxI1dbv1"];
 
 const isAdmin = computed(() => {
   return currentUser.value && ADMIN_UIDS.includes(currentUser.value.uid);
 });
 
+const shouldNotifyMock = computed(() => {
+  return activeExam.value?.status === "active" && !userSubmission.value;
+});
+
+const EXAM_BORDERS: Record<string, { mandatory: number; general: number }> = {
+  第114回: { mandatory: 40, general: 160 },
+  第113回: { mandatory: 40, general: 158 },
+  第112回: { mandatory: 40, general: 152 },
+  第111回: { mandatory: 40, general: 167 },
+  第110回: { mandatory: 40, general: 159 },
+  第109回: { mandatory: 40, general: 155 },
+  第108回: { mandatory: 40, general: 155 },
+  第107回: { mandatory: 40, general: 154 },
+  第106回: { mandatory: 40, general: 142 },
+  第105回: { mandatory: 40, general: 151 },
+  第104回: { mandatory: 40, general: 150 },
+};
+
+const yearStatsList = computed(() => {
+  return questionStats.value.map((stat) => {
+    const year = stat.year;
+    const border = EXAM_BORDERS[year] || { mandatory: 40, general: 155 };
+    const yearQuestions = masterQuestions.value.filter(
+      (q) => q.examYear === year
+    );
+
+    const answeredLogs = studyLogs.value.filter((log) => {
+      return (
+        log.mode === "examYear" &&
+        log.targetYear === year &&
+        log.question?.examYear === year
+      );
+    });
+
+    let mandatoryScore = 0;
+    let generalScore = 0;
+    const countedIds = new Set();
+
+    answeredLogs.forEach((log) => {
+      if (countedIds.has(log.questionId)) return;
+      countedIds.add(log.questionId);
+
+      if (log.isCorrect) {
+        const q = yearQuestions.find((q) => q.id === log.questionId);
+        if (q) {
+          if (q.type === "mandatory") mandatoryScore++;
+          else generalScore++;
+        }
+      }
+    });
+
+    const answeredCount = countedIds.size;
+    const isPassed =
+      mandatoryScore >= border.mandatory && generalScore >= border.general;
+
+    return {
+      year,
+      totalCount: stat.total,
+      answeredCount,
+      mandatoryScore,
+      generalScore,
+      totalScore: mandatoryScore + generalScore,
+      border,
+      isPassed,
+    };
+  });
+});
+
 onMounted(async () => {
   await fetchAllQuestions();
-  // ★ ホーム画面表示時に通知許可を求める
   requestNotificationPermission();
+
+  const saved = localStorage.getItem("nextns_session_questions");
+  if (saved) {
+    try {
+      const parsed = JSON.parse(saved);
+      if (parsed.length > 0) hasResumeData.value = true;
+    } catch {}
+  }
+
+  if (currentUser.value) {
+    await fetchLatestExam(currentUser.value.uid);
+  }
 });
 
 const startStudy = async (options: {
@@ -8415,6 +8634,20 @@ const startStudy = async (options: {
     period: options.period,
   });
   router.push("/study");
+};
+
+const openYearModal = (year: string) => {
+  selectedYearForModal.value = year;
+  yearModalRef.value?.show();
+};
+
+const startYearExam = (period: "am" | "pm") => {
+  yearModalRef.value?.close();
+  startStudy({
+    mode: "examYear",
+    year: selectedYearForModal.value,
+    period: period,
+  });
 };
 </script>
 
@@ -8440,35 +8673,23 @@ const startStudy = async (options: {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
-
-/* カスタムスクロールバー */
-.custom-scrollbar::-webkit-scrollbar {
-  width: 6px;
-}
-.custom-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
-}
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background-color: #cbd5e1;
-  border-radius: 20px;
-}
 </style>
 </file>
 
 <file path=".firebase/hosting.ZGlzdA.cache">
-sw.js,1767795931721,57f674dcde7a87eafc3eac91ec3fb2749940aef3885d4a8e244f77dd37a04d3e
-registerSW.js,1767795931033,5b6445b5215737c53ef0d379c151d57de165a056de2d1c5812ed614f158ebcbd
-workbox-8c29f6e4.js,1767795931722,c1360d97831a7585ba8f5c2631c0b3b78258637b50e1329c8f7fc0837604e59a
-index.html,1767795931033,37c9b4f9052bd6a6ecbf9f5ae7f4a39b24722580fff7493a26262d4ba6cf3e5c
-manifest.webmanifest,1767795931033,e23c66a17eae9a20ef9043e61f89a8261cc0022c603416c0dee217ad5189f7e6
-firebase-messaging-sw.js,1767795930864,8d8cf84c873b19b20b1328e697daeb3ef8d264cfe3e53683cd4da02a30ee90b1
-assets/index-BLuf8SyF.css,1767795931033,68ab55f746cc7401d59ac533353dac2adf5adb6a1ff300820e02e53a5fa567ec
-presentation.html,1767795930865,ae3b4772b21fdc1fc26348c7df9444275707a36e81107e5ccf9737ca72ec523d
-pwa-192x192.png,1767795930865,121b31ad4cdaa0c40de36dfa9392079ab01285a12f2c6db18bfc5b935cefa843
-pwa-512x512.png,1767795930866,121b31ad4cdaa0c40de36dfa9392079ab01285a12f2c6db18bfc5b935cefa843
-logo.png,1767795930865,121b31ad4cdaa0c40de36dfa9392079ab01285a12f2c6db18bfc5b935cefa843
-apple-touch-icon.png,1767795930864,121b31ad4cdaa0c40de36dfa9392079ab01285a12f2c6db18bfc5b935cefa843
-assets/index-DzO4gLiL.js,1767795931033,702b927131296f523e2621c994b0c90654d305b13a7f7c7ce5e210d63cb6b6f0
+sw.js,1767798841200,34efbf26e1dc869a906a1f141a3a6ba8a8b889eb05e8296ec95f320a4d950ac3
+index.html,1767798840509,7b2d293df3e3dc9124a08e67669026d5b5315de32b1acff065cce10de73b49e4
+firebase-messaging-sw.js,1767798840360,8d8cf84c873b19b20b1328e697daeb3ef8d264cfe3e53683cd4da02a30ee90b1
+workbox-8c29f6e4.js,1767798841201,c1360d97831a7585ba8f5c2631c0b3b78258637b50e1329c8f7fc0837604e59a
+registerSW.js,1767798840510,5b6445b5215737c53ef0d379c151d57de165a056de2d1c5812ed614f158ebcbd
+manifest.webmanifest,1767798840510,e23c66a17eae9a20ef9043e61f89a8261cc0022c603416c0dee217ad5189f7e6
+assets/index-xn0_y_c0.css,1767798840510,7948b425759f75ade78213166057ce8f8130c6970bd9d31bd9ed79c0d1505f71
+pwa-192x192.png,1767798840361,121b31ad4cdaa0c40de36dfa9392079ab01285a12f2c6db18bfc5b935cefa843
+logo.png,1767798840360,121b31ad4cdaa0c40de36dfa9392079ab01285a12f2c6db18bfc5b935cefa843
+apple-touch-icon.png,1767798840360,121b31ad4cdaa0c40de36dfa9392079ab01285a12f2c6db18bfc5b935cefa843
+presentation.html,1767798840361,ae3b4772b21fdc1fc26348c7df9444275707a36e81107e5ccf9737ca72ec523d
+pwa-512x512.png,1767798840362,121b31ad4cdaa0c40de36dfa9392079ab01285a12f2c6db18bfc5b935cefa843
+assets/index-DJQzZTTY.js,1767798840510,b5333cd953168b0e0baec1db36a2f6549ef74083c0f2261e76758245aba20590
 </file>
 
 </files>
