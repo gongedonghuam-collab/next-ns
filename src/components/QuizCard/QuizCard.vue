@@ -173,22 +173,23 @@ const correctAnswerLabel = computed(() => {
       >
         Confidence check
       </p>
-      <div class="flex gap-3">
+
+      <div class="flex flex-col sm:flex-row gap-3">
         <button
           @click="submitWithConfidence('ok')"
-          class="flex-1 py-4 rounded-2xl bg-blue-600 text-white font-black shadow-lg shadow-blue-100 active:scale-95 transition"
+          class="w-full sm:flex-1 py-3 sm:py-4 rounded-2xl bg-blue-600 text-white font-black shadow-lg shadow-blue-100 active:scale-95 transition"
         >
           ⭕️ 自信あり
         </button>
         <button
           @click="submitWithConfidence('so-so')"
-          class="flex-1 py-4 rounded-2xl bg-yellow-400 text-white font-black shadow-lg shadow-yellow-100 active:scale-95 transition"
+          class="w-full sm:flex-1 py-3 sm:py-4 rounded-2xl bg-yellow-400 text-white font-black shadow-lg shadow-yellow-100 active:scale-95 transition"
         >
           🔺 まぁまぁ
         </button>
         <button
           @click="submitWithConfidence('ng')"
-          class="flex-1 py-4 rounded-2xl bg-red-500 text-white font-black shadow-lg shadow-red-100 active:scale-95 transition"
+          class="w-full sm:flex-1 py-3 sm:py-4 rounded-2xl bg-red-500 text-white font-black shadow-lg shadow-red-100 active:scale-95 transition"
         >
           ❌ 自信なし
         </button>
