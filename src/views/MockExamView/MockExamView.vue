@@ -18,15 +18,24 @@ const {
 
 const userAnswers = ref<number[]>([]);
 const isTakingExam = ref(false);
+// 結果画面のタブ切り替え用
+const activeResultTab = ref<"wrong" | "correct">("wrong");
 
 onMounted(async () => {
   if (currentUser.value) {
+    // 1. まず模試情報と結果を取得
     await fetchLatestExam(currentUser.value.uid);
+
+    // 2. ★修正: すでに提出済みなら、振り返りリストを表示するために問題データもロードする
+    if (userSubmission.value && activeExam.value) {
+      await loadExamQuestions();
+    }
   }
 });
 
 const startExam = async () => {
   await loadExamQuestions();
+  // 配列を初期化 (-1 は未回答)
   userAnswers.value = new Array(examQuestions.value.length).fill(-1);
   isTakingExam.value = true;
   window.scrollTo(0, 0);
@@ -79,7 +88,51 @@ const failReason = computed(() => {
 
 const deadlineString = computed(() => {
   if (!activeExam.value?.deadline) return "";
-  return activeExam.value.deadline.toLocaleDateString() + " まで";
+  const date = activeExam.value.deadline.toDate
+    ? activeExam.value.deadline.toDate()
+    : new Date(activeExam.value.deadline);
+  return date.toLocaleDateString() + " まで";
+});
+
+// 間違えた問題を抽出 (配列インデックスで照合)
+const wrongQuestions = computed(() => {
+  if (!examQuestions.value || !userSubmission.value) return [];
+
+  const answers = userSubmission.value.userAnswers || [];
+
+  return examQuestions.value.filter((q, index) => {
+    const userChoice = answers[index];
+    // 未回答(-1) または 正解インデックスに含まれていない場合は間違い
+    return (
+      userChoice === undefined ||
+      userChoice === -1 ||
+      !q.correctIndices.includes(userChoice)
+    );
+  });
+});
+
+// 正解した問題を抽出 (配列インデックスで照合)
+const correctQuestions = computed(() => {
+  if (!examQuestions.value || !userSubmission.value) return [];
+
+  const answers = userSubmission.value.userAnswers || [];
+
+  return examQuestions.value.filter((q, index) => {
+    const userChoice = answers[index];
+    // 回答があり、かつ正解インデックスに含まれている場合は正解
+    return (
+      userChoice !== undefined &&
+      userChoice !== -1 &&
+      q.correctIndices.includes(userChoice)
+    );
+  });
+});
+
+// 現在表示するリスト
+const displayList = computed(() => {
+  return activeResultTab.value === "wrong"
+    ? wrongQuestions.value
+    : correctQuestions.value;
 });
 </script>
 
@@ -293,6 +346,117 @@ const deadlineString = computed(() => {
           <div class="mt-4 text-[10px] font-bold text-slate-400">
             受験者数: {{ activeExam.stats.totalParticipants }}人 | 平均点(一般):
             {{ activeExam.stats.generalAverage }}点
+          </div>
+        </div>
+
+        <div
+          class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden"
+        >
+          <div class="flex border-b border-slate-100">
+            <button
+              @click="activeResultTab = 'wrong'"
+              class="flex-1 py-4 text-xs font-bold transition-colors relative"
+              :class="
+                activeResultTab === 'wrong'
+                  ? 'text-red-500 bg-red-50'
+                  : 'text-slate-400 hover:bg-slate-50'
+              "
+            >
+              ⚠️ 間違えた問題
+              <span
+                class="ml-1 bg-white border border-slate-200 px-1.5 rounded-full text-[10px] text-slate-500"
+              >
+                {{ wrongQuestions.length }}
+              </span>
+              <div
+                v-if="activeResultTab === 'wrong'"
+                class="absolute bottom-0 left-0 w-full h-0.5 bg-red-500"
+              ></div>
+            </button>
+
+            <button
+              @click="activeResultTab = 'correct'"
+              class="flex-1 py-4 text-xs font-bold transition-colors relative"
+              :class="
+                activeResultTab === 'correct'
+                  ? 'text-green-600 bg-green-50'
+                  : 'text-slate-400 hover:bg-slate-50'
+              "
+            >
+              ⭕️ 正解した問題
+              <span
+                class="ml-1 bg-white border border-slate-200 px-1.5 rounded-full text-[10px] text-slate-500"
+              >
+                {{ correctQuestions.length }}
+              </span>
+              <div
+                v-if="activeResultTab === 'correct'"
+                class="absolute bottom-0 left-0 w-full h-0.5 bg-green-500"
+              ></div>
+            </button>
+          </div>
+
+          <div class="p-2 min-h-[200px]">
+            <div
+              v-if="displayList.length === 0"
+              class="text-center py-10 text-slate-400 text-xs font-bold"
+            >
+              {{
+                activeResultTab === "wrong"
+                  ? "🎉 間違えた問題はありません！完璧です！"
+                  : "まだ正解がありません...復習しましょう！"
+              }}
+            </div>
+
+            <div v-else class="space-y-2">
+              <div
+                v-for="q in displayList"
+                :key="q.id"
+                @click="router.push(`/question/${q.id}?mode=review`)"
+                class="p-3 rounded-xl hover:bg-slate-50 active:scale-[0.98] transition cursor-pointer flex gap-3 group border border-transparent hover:border-slate-100"
+              >
+                <div class="flex-shrink-0 mt-1">
+                  <span
+                    v-if="activeResultTab === 'wrong'"
+                    class="text-[10px] font-black bg-red-100 text-red-600 px-2 py-1 rounded"
+                  >
+                    MISS
+                  </span>
+                  <span
+                    v-else
+                    class="text-[10px] font-black bg-green-100 text-green-600 px-2 py-1 rounded"
+                  >
+                    GOOD
+                  </span>
+                </div>
+
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-2 mb-1 opacity-60">
+                    <span
+                      class="text-[9px] font-bold border border-slate-200 px-1 rounded"
+                    >
+                      {{ q.examYear }}
+                    </span>
+                    <span
+                      class="text-[9px] font-bold border border-slate-200 px-1 rounded"
+                    >
+                      No.{{ q.questionNumber }}
+                    </span>
+                  </div>
+                  <p
+                    class="text-xs font-bold text-slate-700 line-clamp-2 leading-relaxed"
+                  >
+                    {{ q.text }}
+                  </p>
+                </div>
+
+                <div
+                  class="flex items-center text-slate-300 text-lg group-hover:text-blue-500 transition"
+                >
+                  ›
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
