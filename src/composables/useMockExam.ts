@@ -12,7 +12,8 @@ import {
   orderBy,
   serverTimestamp,
   limit,
-  getCountFromServer, // ★追加: 数を数える機能
+  getCountFromServer,
+  where, // ★追加
 } from "firebase/firestore";
 import type { Question } from "@/types";
 
@@ -50,10 +51,69 @@ export function useMockExam() {
   const userSubmission = ref<MockSubmission | null>(null);
   const examQuestions = ref<Question[]>([]);
 
+  // ★追加: 模試リスト全体（履歴用）
+  const examList = ref<MockExam[]>([]);
+
   // ★追加: 現在の回答者数
   const currentAnswerCount = ref(0);
 
-  // 1. 最新の模試情報を取得
+  // --------------------------------------------------
+  // ★新機能: 全ての模試を取得する関数 (履歴リスト用)
+  // --------------------------------------------------
+  const fetchAllExams = async () => {
+    loading.value = true;
+    try {
+      // 作成日順（新しい順）で取得
+      const q = query(
+        collection(db, "mock_exams"),
+        orderBy("createdAt", "desc")
+      );
+
+      const snapshot = await getDocs(q);
+      const list = snapshot.docs.map((doc) => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          // Firestore Timestamp を Date オブジェクトに変換
+          deadline: data.deadline?.toDate
+            ? data.deadline.toDate()
+            : new Date(data.deadline),
+        };
+      }) as MockExam[];
+
+      examList.value = list;
+    } catch (e) {
+      console.error("模試一覧の取得に失敗:", e);
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  // --------------------------------------------------
+  // ★新機能: 特定の模試の「結果(submission)」を取得する関数
+  // --------------------------------------------------
+  const fetchUserSubmission = async (examId: string, userId: string) => {
+    // ローディングはUI側で制御したい場合もあるため、ここではfalseにしない限り維持するか、
+    // 必要に応じて loading.value = true を入れてください。
+    // 今回は画面遷移時のちらつき防止のため非同期処理のみ記述します。
+    try {
+      const subRef = doc(db, "mock_exams", examId, "submissions", userId);
+      const subSnap = await getDoc(subRef);
+
+      if (subSnap.exists()) {
+        userSubmission.value = subSnap.data() as MockSubmission;
+      } else {
+        userSubmission.value = null; // 未受験
+      }
+    } catch (e) {
+      console.error("回答データの取得に失敗:", e);
+      userSubmission.value = null;
+    }
+  };
+
+  // 1. 最新の模試情報を取得（既存機能互換）
+  // ※ fetchAllExams を使う場合は不要になりますが、既存ロジック維持のため残しています
   const fetchLatestExam = async (userId?: string) => {
     loading.value = true;
     try {
@@ -76,19 +136,7 @@ export function useMockExam() {
 
         // ログインユーザーの回答状況を取得
         if (userId) {
-          const subRef = doc(
-            db,
-            "mock_exams",
-            activeExam.value.id,
-            "submissions",
-            userId
-          );
-          const subSnap = await getDoc(subRef);
-          if (subSnap.exists()) {
-            userSubmission.value = subSnap.data() as MockSubmission;
-          } else {
-            userSubmission.value = null;
-          }
+          await fetchUserSubmission(activeExam.value.id, userId);
         }
       } else {
         activeExam.value = null;
@@ -105,6 +153,7 @@ export function useMockExam() {
     if (!activeExam.value) return;
     loading.value = true;
     const list: Question[] = [];
+    // 問題ID配列から個別に取得（Firestoreの読み取り回数に注意）
     for (const qId of activeExam.value.questionIds) {
       const snap = await getDoc(doc(db, "questions", qId));
       if (snap.exists()) {
@@ -155,6 +204,7 @@ export function useMockExam() {
         submissionData
       );
 
+      // ローカルのstateも更新（日付は現在時刻で仮置き）
       userSubmission.value = {
         ...submissionData,
         submittedAt: new Date(),
@@ -196,7 +246,7 @@ export function useMockExam() {
       });
 
       alert(`「${title}」を作成しました！`);
-      await fetchLatestExam();
+      await fetchAllExams(); // リストを再取得
     } catch (e: any) {
       alert("作成失敗: " + e.message);
     } finally {
@@ -228,6 +278,7 @@ export function useMockExam() {
       let mandatoryMax = 0;
       let generalMax = 0;
 
+      // 問題の配点計算
       for (const qId of qIds) {
         const qSnap = await getDoc(doc(db, "questions", qId));
         if (qSnap.exists()) {
@@ -239,6 +290,7 @@ export function useMockExam() {
 
       const mandatoryBorder = Math.ceil(mandatoryMax * 0.8);
 
+      // 一般問題のボーダー計算（下位10%ライン）
       const sortedGeneralScores = submissions
         .map((s) => s.generalScore)
         .sort((a, b) => b - a);
@@ -269,7 +321,7 @@ export function useMockExam() {
       alert(
         `集計完了！\n参加者: ${totalParticipants}人\n必修ボーダー: ${mandatoryBorder}点\n一般ボーダー: ${generalBorder}点`
       );
-      await fetchLatestExam();
+      await fetchAllExams(); // 更新情報を反映
     } catch (e: any) {
       alert("集計エラー: " + e.message);
     } finally {
@@ -291,7 +343,7 @@ export function useMockExam() {
       await deleteDoc(doc(db, "mock_exams", examId));
       alert("削除しました");
       activeExam.value = null;
-      await fetchLatestExam();
+      await fetchAllExams(); // リスト更新
     } catch (e: any) {
       alert("削除エラー: " + e.message);
     } finally {
@@ -313,15 +365,18 @@ export function useMockExam() {
   return {
     loading,
     activeExam,
+    examList, // ★export
     userSubmission,
     examQuestions,
-    currentAnswerCount, // エクスポート
+    currentAnswerCount,
+    fetchAllExams, // ★export
+    fetchUserSubmission, // ★export
     fetchLatestExam,
     loadExamQuestions,
     submitExam,
     createMockExam,
     closeAndReleaseExam,
     deleteMockExam,
-    fetchAnswerCount, // エクスポート
+    fetchAnswerCount,
   };
 }
