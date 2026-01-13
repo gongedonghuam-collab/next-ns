@@ -131,10 +131,36 @@ const correctAnswerLabel = computed(() => {
       </div>
     </div>
 
+    <div
+      v-if="question.parentData"
+      class="mb-6 bg-blue-50 border-l-4 border-blue-500 p-4 rounded-r-lg"
+    >
+      <div class="flex items-center gap-2 mb-2">
+        <span
+          class="text-[10px] font-black bg-blue-500 text-white px-2 py-0.5 rounded"
+          >状況設定</span
+        >
+      </div>
+      <p class="text-sm text-slate-700 leading-relaxed font-medium">
+        {{ question.parentData.text }}
+      </p>
+      <img
+        v-if="question.parentData.imageUrl"
+        :src="question.parentData.imageUrl"
+        class="mt-3 rounded-lg border border-slate-200 max-h-48 object-contain"
+      />
+    </div>
+
     <h3 class="font-bold text-slate-800 text-lg mb-8 leading-relaxed">
-      <span class="text-blue-600 mr-2">Q{{ index + 1 }}.</span
-      >{{ question.text }}
+      <span class="text-blue-600 mr-2">Q{{ index + 1 }}.</span>
+      {{ question.text }}
     </h3>
+
+    <img
+      v-if="question.imageUrl"
+      :src="question.imageUrl"
+      class="mb-6 rounded-lg border border-slate-200 max-h-60 mx-auto object-contain"
+    />
 
     <div class="space-y-3">
       <button

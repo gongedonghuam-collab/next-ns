@@ -1,3 +1,4 @@
+// src/composables/useNextNs.ts
 import { ref, computed } from "vue";
 import { db, auth } from "@/firebase";
 import {
@@ -54,27 +55,22 @@ const sessionResult = ref<{
 const rankingList = ref<User[]>([]);
 const lastLogId = ref<string | null>(null);
 
-// ログから算出する一時的な経験値
 const totalExp = computed(() =>
-  // ★修正: 正解(20pt)のみ加算し、不正解は0ptにする
   studyLogs.value.reduce((t, log) => t + (log.isCorrect ? 20 : 0), 0)
 );
 
-// レベル計算 (100ptで1レベルアップ)
 const currentLevel = computed(() => {
   const exp = currentUser.value?.totalExp || totalExp.value;
   const lv = Math.floor(exp / 100) + 1;
-  return lv > 100 ? 100 : lv; // 上限100
+  return lv > 100 ? 100 : lv;
 });
 
-// 次のレベルまでの進捗 (0-99)
 const levelProgress = computed(() => {
   const exp = currentUser.value?.totalExp || totalExp.value;
   if (currentLevel.value >= 100) return 100;
   return exp % 100;
 });
 
-// ★修正: 10レベルごとに変化する称号ロジック
 const currentRank = computed(() => {
   const lv = currentLevel.value;
   if (lv >= 100) return "ナイチンゲール 🕊️";
@@ -140,6 +136,51 @@ const dbHealthReport = computed(() => {
 export function useNextNs() {
   const aiResponse = ref("");
   const isAiThinking = ref(false);
+
+  // ★追加: 質問リストに親データを結合するヘルパー関数
+  const resolveParents = async (targetQuestions: Question[]) => {
+    // parentIdを持っている質問を抽出
+    const hasParent = targetQuestions.filter((q) => q.parentId);
+    if (hasParent.length === 0) return;
+
+    // 必要な親IDのリストを作成
+    const parentIds = [...new Set(hasParent.map((q) => q.parentId!))];
+
+    // マスタデータから親を探す
+    const parentMap = new Map<string, Question>();
+
+    // 1. まずmasterQuestionsから探す
+    parentIds.forEach((pid) => {
+      const found = masterQuestions.value.find((mq) => mq.id === pid);
+      if (found) parentMap.set(pid, found);
+    });
+
+    // 2. マスタにない場合はDBからフェッチする（遅延読み込み）
+    const missingIds = parentIds.filter((pid) => !parentMap.has(pid));
+    if (missingIds.length > 0) {
+      // ※ Firestoreの 'in' クエリは最大10件までなので、ループかchunkで処理推奨
+      // ここでは簡易的に1つずつ取得（エラーハンドリング含む）
+      await Promise.all(
+        missingIds.map(async (pid) => {
+          try {
+            const snap = await getDoc(doc(db, "questions", pid));
+            if (snap.exists()) {
+              parentMap.set(pid, { id: snap.id, ...snap.data() } as Question);
+            }
+          } catch (e) {
+            console.error("Parent fetch error:", pid, e);
+          }
+        })
+      );
+    }
+
+    // 親データを結合
+    targetQuestions.forEach((q) => {
+      if (q.parentId && parentMap.has(q.parentId)) {
+        q.parentData = parentMap.get(q.parentId);
+      }
+    });
+  };
 
   const saveSession = () => {
     if (questions.value.length > 0) {
@@ -233,7 +274,11 @@ export function useNextNs() {
         reviewMap.delete(log.question.id);
       }
     });
-    reviewQuestions.value = Array.from(reviewMap.values()).reverse();
+
+    // ★修正: 復習リスト作成時にも親データを解決する
+    const reviewList = Array.from(reviewMap.values()).reverse();
+    await resolveParents(reviewList);
+    reviewQuestions.value = reviewList;
   };
 
   const fetchHistory = async () => {
@@ -244,7 +289,8 @@ export function useNextNs() {
       limit(100)
     );
     const snap = await getDocs(q);
-    studyLogs.value = snap.docs
+
+    const logs = snap.docs
       .map(
         (d) =>
           ({
@@ -254,6 +300,14 @@ export function useNextNs() {
           } as StudyLog)
       )
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+    // ★修正: 履歴の質問データにも親データを結合
+    const questionsInLogs = logs
+      .map((l) => l.question)
+      .filter((q): q is Question => !!q);
+    await resolveParents(questionsInLogs);
+
+    studyLogs.value = logs;
   };
 
   const fetchBookmarks = async () => {
@@ -263,9 +317,12 @@ export function useNextNs() {
       where("userId", "==", currentUser.value.uid)
     );
     const snap = await getDocs(q);
-    bookmarkedQuestions.value = snap.docs.map(
-      (d) => d.data().question as Question
-    );
+    const bqs = snap.docs.map((d) => d.data().question as Question);
+
+    // ★修正: ブックマークにも親データを結合
+    await resolveParents(bqs);
+
+    bookmarkedQuestions.value = bqs;
     bookmarkedIds.value = new Set(snap.docs.map((d) => d.data().questionId));
   };
 
@@ -305,7 +362,6 @@ export function useNextNs() {
     q.lastResult = { isCorrect, confidence, userChoice: [choice] };
     saveSession();
 
-    // ★修正: 正解なら20pt、不正解なら0pt
     const expGained = isCorrect ? 20 : 0;
 
     const logRef = await addDoc(collection(db, "study_logs"), {
@@ -324,7 +380,6 @@ export function useNextNs() {
 
     try {
       const userRef = doc(db, "users", uid);
-      // ポイント加算処理
       if (expGained > 0) {
         await setDoc(
           userRef,
@@ -398,7 +453,12 @@ export function useNextNs() {
         (i) => i + 1
       )} 番なのか、
       他の選択肢がなぜ間違いなのかを、学生が覚えやすいように噛み砕いて解説してください。
-      また、この問題に関連する「重要ポイント」も1つ教えてください。`;
+      また、この問題に関連する「重要ポイント」も1つ教えてください。
+      ${
+        q.parentData
+          ? `※なお、この問題は以下の状況設定に基づきます：${q.parentData.text}`
+          : ""
+      }`; // ★事例文も考慮させる
 
       const res = await model.generateContent(prompt);
       const text = res.response.text();
@@ -493,6 +553,9 @@ export function useNextNs() {
         list.sort(() => Math.random() - 0.5);
       }
 
+      // ★修正: 問題リスト確定後、親データを解決して結合する
+      await resolveParents(list);
+
       questions.value = list;
       if (options.force) {
         currentSessionIndex.value = 0;
@@ -586,6 +649,7 @@ export function useNextNs() {
     lastLogId,
     sessionMode,
     sessionYear,
+    resolveParents, // ★公開
     initAuth: () =>
       onAuthStateChanged(auth, async (user) => {
         if (user) {

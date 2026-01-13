@@ -59,7 +59,8 @@ import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/firebase";
 
 const route = useRoute();
-const { masterQuestions, fetchAllQuestions, saveAnswer } = useNextNs();
+const { masterQuestions, fetchAllQuestions, saveAnswer, resolveParents } =
+  useNextNs();
 
 const targetQuestion = ref<Question | null>(null);
 const loading = ref(true);
@@ -73,24 +74,27 @@ onMounted(async () => {
   if (masterQuestions.value.length === 0) {
     await fetchAllQuestions();
   }
-  const found = masterQuestions.value.find((q) => q.id === questionId);
+  let found = masterQuestions.value.find((q) => q.id === questionId);
 
-  if (found) {
-    targetQuestion.value = found;
-    loading.value = false;
-  } else {
+  if (!found) {
     try {
       const docRef = doc(db, "questions", questionId);
       const snap = await getDoc(docRef);
       if (snap.exists()) {
-        targetQuestion.value = { id: snap.id, ...snap.data() } as Question;
+        found = { id: snap.id, ...snap.data() } as Question;
       }
     } catch (e) {
       console.error(e);
-    } finally {
-      loading.value = false;
     }
   }
+
+  // ★修正: 見つかった問題に親データが必要なら結合する
+  if (found) {
+    await resolveParents([found]); // 単一要素の配列として渡して解決
+    targetQuestion.value = found;
+  }
+
+  loading.value = false;
 });
 
 const handleAnswer = async (
