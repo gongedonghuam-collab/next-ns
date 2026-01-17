@@ -1,13 +1,11 @@
 // src/types/index.ts
 
-// ==========================================
-// 既存の型定義 (拡張)
-// ==========================================
 export interface Question {
   id: string;
   examYear: string;
   questionNumber: string;
-  type: "mandatory" | "general" | "situation" | "case_study"; // case_study(事例文)を追加
+  // ★ case_study を追加
+  type: "mandatory" | "general" | "situation" | "case_study";
   text: string;
   choices: string[];
   correctIndices: number[];
@@ -15,9 +13,9 @@ export interface Question {
   imageUrl?: string;
   tags?: string[];
 
-  // ★追加: 親子関係用フィールド
-  parentId?: string; // 親（事例）のID
-  parentData?: Question; // 取得した親データを入れる場所
+  // ★ 親子関係用フィールドを追加
+  parentId?: string;
+  parentData?: Question;
 
   lastResult?: {
     isCorrect: boolean;
@@ -57,10 +55,6 @@ export interface StudyLog {
   mode?: string;
   targetYear?: string | null;
 }
-
-// ==========================================
-// 模試用の型定義
-// ==========================================
 
 export interface MockExam {
   id: string;

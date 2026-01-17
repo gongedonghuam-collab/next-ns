@@ -21,14 +21,12 @@ import { onAuthStateChanged, signOut } from "firebase/auth";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import type { Question, User, StudyLog } from "@/types";
 
-// 保存キーの定義
 const STORAGE_KEY_SESSION = "nextns_session_questions";
 const STORAGE_KEY_INDEX = "nextns_session_index";
 const STORAGE_KEY_PERIOD = "nextns_session_period";
 const STORAGE_KEY_MODE = "nextns_session_mode";
 const STORAGE_KEY_YEAR = "nextns_session_year";
 
-// --- グローバルステート ---
 const currentUser = ref<User | null>(null);
 const masterQuestions = ref<Question[]>([]);
 const questions = ref<Question[]>([]);
@@ -40,7 +38,6 @@ const loading = ref(false);
 
 const currentSessionIndex = ref(0);
 const selectedPeriod = ref<"all" | "am" | "pm">("all");
-
 const sessionMode = ref<"random100" | "examYear" | null>(null);
 const sessionYear = ref<string | null>(null);
 
@@ -137,29 +134,23 @@ export function useNextNs() {
   const aiResponse = ref("");
   const isAiThinking = ref(false);
 
-  // ★追加: 質問リストに親データを結合するヘルパー関数
+  // ★親データ解決関数
   const resolveParents = async (targetQuestions: Question[]) => {
-    // parentIdを持っている質問を抽出
     const hasParent = targetQuestions.filter((q) => q.parentId);
     if (hasParent.length === 0) return;
 
-    // 必要な親IDのリストを作成
     const parentIds = [...new Set(hasParent.map((q) => q.parentId!))];
-
-    // マスタデータから親を探す
     const parentMap = new Map<string, Question>();
 
-    // 1. まずmasterQuestionsから探す
+    // マスタから検索
     parentIds.forEach((pid) => {
       const found = masterQuestions.value.find((mq) => mq.id === pid);
       if (found) parentMap.set(pid, found);
     });
 
-    // 2. マスタにない場合はDBからフェッチする（遅延読み込み）
+    // なければDBから取得
     const missingIds = parentIds.filter((pid) => !parentMap.has(pid));
     if (missingIds.length > 0) {
-      // ※ Firestoreの 'in' クエリは最大10件までなので、ループかchunkで処理推奨
-      // ここでは簡易的に1つずつ取得（エラーハンドリング含む）
       await Promise.all(
         missingIds.map(async (pid) => {
           try {
@@ -174,7 +165,6 @@ export function useNextNs() {
       );
     }
 
-    // 親データを結合
     targetQuestions.forEach((q) => {
       if (q.parentId && parentMap.has(q.parentId)) {
         q.parentData = parentMap.get(q.parentId);
@@ -275,9 +265,8 @@ export function useNextNs() {
       }
     });
 
-    // ★修正: 復習リスト作成時にも親データを解決する
     const reviewList = Array.from(reviewMap.values()).reverse();
-    await resolveParents(reviewList);
+    await resolveParents(reviewList); // ★親データ結合
     reviewQuestions.value = reviewList;
   };
 
@@ -289,7 +278,6 @@ export function useNextNs() {
       limit(100)
     );
     const snap = await getDocs(q);
-
     const logs = snap.docs
       .map(
         (d) =>
@@ -301,11 +289,10 @@ export function useNextNs() {
       )
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 
-    // ★修正: 履歴の質問データにも親データを結合
     const questionsInLogs = logs
       .map((l) => l.question)
       .filter((q): q is Question => !!q);
-    await resolveParents(questionsInLogs);
+    await resolveParents(questionsInLogs); // ★親データ結合
 
     studyLogs.value = logs;
   };
@@ -319,8 +306,7 @@ export function useNextNs() {
     const snap = await getDocs(q);
     const bqs = snap.docs.map((d) => d.data().question as Question);
 
-    // ★修正: ブックマークにも親データを結合
-    await resolveParents(bqs);
+    await resolveParents(bqs); // ★親データ結合
 
     bookmarkedQuestions.value = bqs;
     bookmarkedIds.value = new Set(snap.docs.map((d) => d.data().questionId));
@@ -454,11 +440,7 @@ export function useNextNs() {
       )} 番なのか、
       他の選択肢がなぜ間違いなのかを、学生が覚えやすいように噛み砕いて解説してください。
       また、この問題に関連する「重要ポイント」も1つ教えてください。
-      ${
-        q.parentData
-          ? `※なお、この問題は以下の状況設定に基づきます：${q.parentData.text}`
-          : ""
-      }`; // ★事例文も考慮させる
+      ${q.parentData ? `\n【前提となる状況設定】\n${q.parentData.text}` : ""}`;
 
       const res = await model.generateContent(prompt);
       const text = res.response.text();
@@ -553,8 +535,7 @@ export function useNextNs() {
         list.sort(() => Math.random() - 0.5);
       }
 
-      // ★修正: 問題リスト確定後、親データを解決して結合する
-      await resolveParents(list);
+      await resolveParents(list); // ★親データ結合
 
       questions.value = list;
       if (options.force) {
@@ -649,7 +630,7 @@ export function useNextNs() {
     lastLogId,
     sessionMode,
     sessionYear,
-    resolveParents, // ★公開
+    resolveParents, // ★外部から呼べるように公開
     initAuth: () =>
       onAuthStateChanged(auth, async (user) => {
         if (user) {

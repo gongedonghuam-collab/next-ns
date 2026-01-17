@@ -65,7 +65,6 @@ const { masterQuestions, fetchAllQuestions, saveAnswer, resolveParents } =
 const targetQuestion = ref<Question | null>(null);
 const loading = ref(true);
 
-// ★追加: URLクエリからモード判定
 const isReviewMode = computed(() => route.query.mode === "review");
 
 onMounted(async () => {
@@ -88,9 +87,9 @@ onMounted(async () => {
     }
   }
 
-  // ★修正: 見つかった問題に親データが必要なら結合する
+  // ★修正: 親データが必要なら解決して結合
   if (found) {
-    await resolveParents([found]); // 単一要素の配列として渡して解決
+    await resolveParents([found]);
     targetQuestion.value = found;
   }
 
@@ -102,7 +101,6 @@ const handleAnswer = async (
   choiceIndex: number,
   confidence: any
 ) => {
-  // レビューモードで見ているときは、履歴を保存しない（重複を防ぐため）
   if (isReviewMode.value) return;
 
   if (targetQuestion.value) {

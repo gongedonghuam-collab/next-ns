@@ -141,16 +141,17 @@ const correctAnswerLabel = computed(() => {
           >状況設定</span
         >
       </div>
-      <p class="text-sm text-slate-700 leading-relaxed font-medium">
+      <p
+        class="text-sm text-slate-700 leading-relaxed font-medium whitespace-pre-wrap"
+      >
         {{ question.parentData.text }}
       </p>
       <img
         v-if="question.parentData.imageUrl"
         :src="question.parentData.imageUrl"
-        class="mt-3 rounded-lg border border-slate-200 max-h-48 object-contain"
+        class="mt-3 rounded-lg border border-slate-200 max-h-48 object-contain w-full bg-white"
       />
     </div>
-
     <h3 class="font-bold text-slate-800 text-lg mb-8 leading-relaxed">
       <span class="text-blue-600 mr-2">Q{{ index + 1 }}.</span>
       {{ question.text }}
@@ -159,7 +160,7 @@ const correctAnswerLabel = computed(() => {
     <img
       v-if="question.imageUrl"
       :src="question.imageUrl"
-      class="mb-6 rounded-lg border border-slate-200 max-h-60 mx-auto object-contain"
+      class="mb-6 rounded-lg border border-slate-200 max-h-60 mx-auto object-contain w-full bg-white"
     />
 
     <div class="space-y-3">
@@ -244,7 +245,7 @@ const correctAnswerLabel = computed(() => {
         Explanation
       </p>
       <div
-        class="text-sm text-slate-700 leading-relaxed bg-slate-50 p-6 rounded-[32px] mb-6 shadow-inner"
+        class="text-sm text-slate-700 leading-relaxed bg-slate-50 p-6 rounded-[32px] mb-6 shadow-inner whitespace-pre-wrap"
       >
         {{ question.explanation }}
       </div>
